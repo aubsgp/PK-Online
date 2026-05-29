@@ -1,0 +1,23 @@
+# Environment Variables
+venv/
+.venv/
+.vscode/
+defs/
+
+# Python
+__pycache__/
+
+# Outputs
+TemporalSecretary.dll
+dump.txt
+debug.log
+
+# Python Scripts for Processing Files
+process_dump.py
+rewrite.py
+
+# Other
+pokeplat/
+bugs.txt
+illuminate.lua
+TODO.txt
