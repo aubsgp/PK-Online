@@ -139,6 +139,7 @@ DWORD WINAPI send_thread_func(LPVOID _){
         if(update_flag_copy){
             cJSON *root = cJSON_CreateObject();
             cJSON_AddNumberToObject(root, "token", token);
+            cJSON_AddNumberToObject(root, "flags", update_flag_copy);
             cJSON *actor_obj;
 
             if (update_flag_copy & ACTOR_DIFFERS){
@@ -153,11 +154,11 @@ DWORD WINAPI send_thread_func(LPVOID _){
                 cJSON_AddItemToObject(actor_obj, "party", party_obj);
             }
 
-            cJSON_AddItemToObject(root, "actor", actor_obj);
+            cJSON_AddItemToObject(root, "plyr", actor_obj);
             char *json_string = cJSON_PrintUnformatted(root);
             cJSON_Delete(root);
 
-            DWORD result = WinHttpWebSocketSend(websocket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (const char *)json_string, strlen(json_string));
+            DWORD result = WinHttpWebSocketSend(websocket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (PVOID)json_string, strlen(json_string));
             free(json_string);
             if(result != ERROR_SUCCESS){
                 error_log("In send_thread_func: Failed to send websocket message");
@@ -191,13 +192,14 @@ DWORD WINAPI receive_thread_func(LPVOID _){
             free(buffer);
             return 1;
         }
-        if(type != WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE){
-            continue;
-        }
         if(type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE){
+            error_log("Websocket closed by server.");
             running = false;
+            fatal_error = true;
             free(buffer);
             return 0;
+        }else if(type != WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE){
+            continue;
         }
         buffer[bytes_read] = '\0';
         cJSON *update_obj = cJSON_Parse(buffer);
@@ -324,7 +326,7 @@ static int HANDSHAKE(lua_State *L){
     }
 
 
-    websocket = WinHttpWebSocketCompleteUpgrade(request, NULL);
+    websocket = WinHttpWebSocketCompleteUpgrade(request, 0);
     if(websocket == NULL){
         WinHttpCloseHandle(request);
         error_log("In HANDSHAKE: Failed to upgrade to websocket");
@@ -342,7 +344,10 @@ static int HANDSHAKE(lua_State *L){
         return luaL_error(L, "Failed to receive websocket response.");
     }
     response[bytes_read] = '\0';
-    sscanf(response, "%u %u", &player.id, &token);
+    cJSON *response_obj = cJSON_Parse(response);
+    player.id = cJSON_GetObjectItem(response_obj, "id")->valueint;
+    token = (unsigned int)cJSON_GetObjectItem(response_obj, "token")->valuedouble;
+    free(response_obj);
     lua_pushinteger(L, player.id);
 
     FILE *log = fopen("debug.log", "a");

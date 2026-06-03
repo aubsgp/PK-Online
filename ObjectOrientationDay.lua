@@ -252,8 +252,6 @@ function Billboard.from_memory(address)
         sprite = 1
     elseif sprite_info == 0x625f6c70 then -- "pl_b"
         sprite = 2
-    else
-        print("Warning: unrecognized sprite info at " .. string.format("0x%x: 0x%x", animtex_addr + 0x1cc, sprite_info))
     end
 
     local anim_type = data:readbyte(Billboard.ANIM_TYPE_OFFSET_1)
@@ -649,7 +647,8 @@ function Actor:new(id, name, pronouns, map, is_moving, party, billboard)
     instance.id = id or 0
     instance.name = name or ""
     instance.pronouns = pronouns or 0
-    instance.map = map or 0
+    instance.map = map or 0 -- route, except we set it to 0 if its the overworld.
+    instance.route = map or 0
     instance.is_moving = is_moving or 0
     instance.party = party or {}
     instance.billboard = billboard or nil

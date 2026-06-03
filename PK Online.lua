@@ -12,25 +12,28 @@ local mem_base = nil
 local battlesystem_addr = nil
 local battlecontext_addr = nil
 
-memory.writebyte(0x04000240, 0x80) -- makes texture/palette data visible to the cpu so that we can see it in the memory viewer
-memory.writebyte(0x04000241, 0x88)
-memory.writebyte(0x04000244, 0x80)
-
-for i, texture in ipairs(Textures) do
-   Textures[i] = setmetatable(texture, Data)
-   Textures[i]:write_to_memory(Textures.BASE - i*Textures.SIZE) -- We inject textures back-to-front so that we don't have to worry about overwriting anything important in the memory region.
-end
-for i, palette in ipairs(Palettes) do
-    Palettes[i] = setmetatable(palette, Data)
-    Palettes[i]:write_to_memory(Palettes.BASE - i*Palettes.SIZE) -- Same deal here.
-end
-
-memory.writebyte(0x04000240, 0x83) -- reverts it in the same frame so as to avoid causing visible graphical oddities.
-memory.writebyte(0x04000241, 0x8b)
-memory.writebyte(0x04000244, 0x83)
-
 local player = Actor:new(pid)
 ActorManager.player = player
+
+local function inject_textures_palettes()
+    memory.writebyte(0x04000240, 0x80) -- makes texture/palette data visible to the cpu so that we can see it in the memory viewer
+    memory.writebyte(0x04000241, 0x88)
+    memory.writebyte(0x04000244, 0x80)
+
+    for i, texture in ipairs(Textures) do
+        local texdata = setmetatable(texture, Data)
+        texdata:write_to_memory(Textures.BASE - i*Textures.SIZE) -- We inject textures back-to-front so that we don't have to worry about overwriting anything important in the memory region.
+    end
+    for i, palette in ipairs(Palettes) do
+        local paldata = setmetatable(palette, Data)
+        paldata:write_to_memory(Palettes.BASE - i*Palettes.SIZE) -- Same deal here.
+    end
+
+    memory.writebyte(0x04000240, 0x83) -- reverts it in the same frame so as to avoid causing visible graphical oddities.
+    memory.writebyte(0x04000241, 0x8b)
+    memory.writebyte(0x04000244, 0x83)
+end
+inject_textures_palettes()
 
 local function get_addresses()
     mem_base = memory.readdword(mem_base_pointer)
@@ -147,7 +150,9 @@ local function update()
     else
         if in_battle then
             in_battle = false
-            hands_off_timer = 1000 -- Ditto here
+            billboard_setup()
+            get_addresses()
+            inject_textures_palettes()
         end
     end
     if hands_off_timer > 0 then
@@ -189,11 +194,20 @@ local function update()
 
     else
 
+        get_addresses()
+        if player.billboard.addr ~= 0 then
+            inject_textures_palettes()
+        end
         -- Update location info.
-        local map = memory.readdword(mem_base + 0x1294)
-        if Overworld[map] then
+        local route = memory.readdword(mem_base + 0x1294)
+        local map = route
+        if Overworld[route] then
             map = 0
         end
+        -- if player.route ~= route then
+        --     player.route = route
+        --     print(string.format("Route changed to %d", route))
+        -- end
         if(player.map ~= map) then
             player.map = map
             ActorManager.cull()
@@ -292,7 +306,9 @@ local function debug_memory()
     pcall(function() gui.text(5, 35, string.format("player billboard: 0x%x", ActorManager.player.billboard.addr)) end)
 
     local menu_cursor = memory.readword(mem_base + 0x2186C)
-    pcall(function() gui.text(5, 50, string.format("obstructions addr: 0x%x // value: %d", Obstructions.addr)) end)
+    pcall(function() gui.text(5, 50, string.format("obstructions addr: 0x%x", Obstructions.addr)) end)
+    pcall(function() gui.text(5, 65, string.format("start menu showing: %s", tostring(Obstructions.menus.start_menu.is_showing))) end)
+    pcall(function() gui.text(5, 80, string.format("text box showing: %s", tostring(Obstructions.menus.text_box.is_showing))) end)
 end
 
 local function display() -- Us drawing on the screen.

@@ -6,6 +6,7 @@ defs/
 
 # Python
 __pycache__/
+cJSON-master/
 
 # Outputs
 TemporalSecretary.dll
