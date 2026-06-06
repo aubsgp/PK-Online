@@ -207,6 +207,7 @@ end
 -- See https://github.com/pret/pokeplatinum/blob/main/include/billboard.h#L22.
 Billboard = {
     POS_OFFSET = 0x00,
+    CALLBACK_OFFSET = 0x18,
     DRAW_OFFSET = 0x24,
     MODELSET_OFFSET = 0x84,
     MODEL_OFFSET = 0x88,
@@ -226,13 +227,14 @@ Billboard = {
 }
 Billboard.__index = Billboard
 
-function Billboard:new(addr, pos, sprite, anim, frame, next_billboard, prev_billboard)
+function Billboard:new(addr, pos, sprite, anim, frame, visible, next_billboard, prev_billboard)
     local instance = setmetatable({}, self)
     instance.addr = addr or 0
     instance.pos = pos or Pos:new()
     instance.sprite = sprite or 0
     instance.anim_type = anim or 0
     instance.anim_frame = frame or 0
+    instance.visible = visible or 0
     instance.next = next_billboard or nil
     instance.prev = prev_billboard or nil
     return instance
@@ -348,6 +350,16 @@ function Billboard:move_to(new_pos)
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, new_pos[3])
 end
 
+function Billboard:show()
+    self.visible = 1
+    memory.writedword(self.addr + Billboard.DRAW_OFFSET, self.visible)
+end
+
+function Billboard:hide()
+    self.visible = 0
+    memory.writedword(self.addr + Billboard.DRAW_OFFSET, self.visible)
+end
+
 function Billboard:adv_frame()
     self.anim_frame = (self.anim_frame + 0x10) % 0x100
     memory.writebyte(self.addr + Billboard.ANIM_FRAME_OFFSET, self.anim_frame)
@@ -394,6 +406,8 @@ function Billboard:write()
     memory.writedword(self.addr + Billboard.POS_OFFSET, self.pos[1])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x04, self.pos[2])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, self.pos[3])
+
+    memory.writedword(self.addr + Billboard.DRAW_OFFSET, self.visible)
 
     memory.writebyte(self.addr + Billboard.ANIM_TYPE_OFFSET_1, self.anim_type)
     memory.writebyte(self.addr + Billboard.ANIM_TYPE_OFFSET_2, self.anim_type)
@@ -720,6 +734,7 @@ function ActorManager.update_from_secretary(update)
                 ActorManager.BillboardList.insert_A_before_B(neighbor.billboard, ActorManager.BillboardList.tail)
             end
             ActorManager.neighbors[id] = neighbor
+            ActorManager.neighbors[id].billboard.visible = 1
             ActorManager.neighbors[id].billboard:write()
         end
 
@@ -762,19 +777,20 @@ function ActorManager.update_billboard_list()
 
     local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
     ActorManager.player.billboard = Billboard.from_memory(player_billboard_addr)
+    ActorManager.player.billboard:flesh_forward()
 
     local billboard_template = Data:new(ActorManager.player.billboard.addr, Billboard.SIZE)
+    billboard_template:writedwordrange(Billboard.POS_OFFSET, {0, 0, 0})
+    billboard_template:writedwordrange(Billboard.CALLBACK_OFFSET, {0, 0, 0})
+    billboard_template:writedword(Billboard.DRAW_OFFSET, 0)
     ActorManager.BillboardList.update_template(billboard_template)
     for i, neighbor in pairs(ActorManager.neighbors) do
         if neighbor.billboard then
             neighbor.billboard:write()
         end
     end
-    ActorManager.BillboardList.head:write()
-    memory.writedword(ActorManager.BillboardList.head.addr + Billboard.DRAW_OFFSET, 0) 
-    ActorManager.BillboardList.tail:write()
-    memory.writedword(ActorManager.BillboardList.tail.addr + Billboard.DRAW_OFFSET, 0)
 
-    ActorManager.player.billboard:flesh_forward()
+    ActorManager.BillboardList.head:write()
+    ActorManager.BillboardList.tail:write()
     ActorManager.show_billboard_list()
 end

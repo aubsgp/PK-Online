@@ -86,6 +86,8 @@ local timer = 1
 local frame_counter = 0
 local in_battle = false
 local done_wait = false
+local corruption_detected = false
+local player_billboard_changed = false
 
 local timer2 = -1
 local function billboard_setup()
@@ -94,7 +96,6 @@ local function billboard_setup()
         timer = 1
         return
     end
-    print("Setting up billboards with player billboard address: " .. string.format("0x%x", player_billboard_addr))
     local next_addr = memory.readdword(player_billboard_addr + Billboard.NEXT_OFFSET)
     if next_addr < 0x2000000 or next_addr > 0x3000000 then
         timer = 1
@@ -105,6 +106,7 @@ local function billboard_setup()
         done_wait = true
         return
     end
+    print("Setting up billboards with player billboard address: " .. string.format("0x%x", player_billboard_addr))
     ActorManager.update_billboard_list()
     timer = -1
     done_wait = false
@@ -121,9 +123,8 @@ end
 
 -- The game checks if the billboard list is active only when its about to delete it. So we watch for that and hide our insertions whenever that happens to prevent corruption curing cleanup.
 memory.registerread(BillboardList.addr, 1, function()
-    print("Game is about to teardown the BillboardList. Hiding it to prevent corruption.")
     ActorManager.hide_billboard_list()
-end) 
+end)
 
 local to_update = {false, false, false, false, false, false}
 local read_result = nil
@@ -177,16 +178,21 @@ local function overworld_update()
     end
     if map ~= player.map then
         player.map = map
-        timer = 20
+        timer = 100
         return
     end
 
-    -- Keep an eye on the Player's Billboard struct to make sure it hasn't recently changed.
+    -- Keep an eye on the Player's Billboard struct to make sure it hasn't recently changed, i.e. getting on a bike or using the poketch.
     local billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-    player.billboard.addr = billboard_addr
-    if billboard_addr ~= 0 then
+    if billboard_addr == 0 then
+        player_billboard_changed = true
+        return
+    else
         player.billboard:update_from_memory()
-        ActorManager.show_billboard_list()
+        if player_billboard_changed then
+            player_billboard_changed = false
+            ActorManager:show_billboard_list()
+        end
     end
 
     -- Update party.
@@ -202,6 +208,17 @@ local function overworld_update()
                 player.party[i] = read_result
                 to_update[i] = false
             end
+        end
+    end
+
+    local free_billboards_addr = memory.readdword(BillboardList.addr + Billboard.SIZE + 0x0c)
+    local free_billboards = Data:new(free_billboards_addr, 0x40*0x04)
+    for i = 1, 0x40 do
+        local offset = (i-1)*0x04
+        local addr = free_billboards:readdword(offset)
+        if addr >= 0x023c0000 and addr <= 0x023c4d54 then
+            corruption_detected = true
+            print(string.format("0x%x", free_billboards_addr))
         end
     end
 
@@ -320,6 +337,11 @@ local function display() -- Us drawing on the screen.
         debug_memory()
     elseif joypad.get(1)["L"] then
         debug_gfx()
+    end
+
+    if(corruption_detected) then
+        pcall(function() gui.text(5, 100, "Potential memory corruption detected!") end)
+        pcall(function() gui.text(5, 115, "Savestate and send it to Aubs.") end)
     end
 end
 
