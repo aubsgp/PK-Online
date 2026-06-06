@@ -207,7 +207,7 @@ end
 -- See https://github.com/pret/pokeplatinum/blob/main/include/billboard.h#L22.
 Billboard = {
     POS_OFFSET = 0x00,
-    RENDEROBJ_OFFSET = 0x28,
+    DRAW_OFFSET = 0x24,
     MODELSET_OFFSET = 0x84,
     MODEL_OFFSET = 0x88,
     TEXTURE_OFFSET = 0x8c,
@@ -230,7 +230,7 @@ function Billboard:new(addr, pos, sprite, anim, frame, next_billboard, prev_bill
     local instance = setmetatable({}, self)
     instance.addr = addr or 0
     instance.pos = pos or Pos:new()
-    instance.sprite = sprite or 1
+    instance.sprite = sprite or 0
     instance.anim_type = anim or 0
     instance.anim_frame = frame or 0
     instance.next = next_billboard or nil
@@ -342,10 +342,10 @@ function Billboard:insert_before(target) -- Inserts the this billboard before th
 end
 
 function Billboard:move_to(new_pos)
-    self.pos = new_pos + Pos:new({0, 0, 0x00006000}) -- The billboard coordinates are, for some reason, 6 pixels higher than the map object coordinates.
-    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x00, self.pos[1])
-    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x04, self.pos[2])
-    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, self.pos[3])
+    self.pos = new_pos
+    memory.writedword(self.addr + Billboard.POS_OFFSET, new_pos[1])
+    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x04, new_pos[2])
+    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, new_pos[3])
 end
 
 function Billboard:adv_frame()
@@ -391,10 +391,10 @@ function Billboard.decode_plttkey(plttkey)
 end
 
 function Billboard:write()
-    memory.writedword(self.addr + Billboard.POS_OFFSET + 0x00, self.pos[1])
+    memory.writedword(self.addr + Billboard.POS_OFFSET, self.pos[1])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x04, self.pos[2])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, self.pos[3])
-    
+
     memory.writebyte(self.addr + Billboard.ANIM_TYPE_OFFSET_1, self.anim_type)
     memory.writebyte(self.addr + Billboard.ANIM_TYPE_OFFSET_2, self.anim_type)
     memory.writebyte(self.addr + Billboard.ANIM_FRAME_OFFSET, self.anim_frame)
@@ -406,7 +406,7 @@ function Billboard:write()
     end
 
     if self.sprite then
-        local addr = Textures.BASE - self.sprite * (Textures.SIZE)
+        local addr = 0x6840000 + (self.sprite - 1) * (Textures.SIZE)
         local texkey = Billboard.generate_texkey(addr, Textures.SIZE)
         memory.writedword(self.addr + Billboard.TEXKEY_OFFSET, texkey)
 
@@ -428,7 +428,7 @@ BillboardList = {
 }
 
 function BillboardList.update_template(template)
-    for i = 0, 101 do -- TODO: Avoid writing to sprite/pos/etc pointers so that this can be done non-destructively.
+    for i = 0, 101 do -- TODO: Avoid writing to texkey and plttkey fields.
         local offset = BillboardList.scratch_base + i*Billboard.SIZE
         template:write_to_memory(offset)
     end
@@ -717,7 +717,7 @@ function ActorManager.update_from_secretary(update)
                 neighbor.billboard.next = ActorManager.neighbors[id].billboard.next
                 neighbor.billboard.prev = ActorManager.neighbors[id].billboard.prev
             else
-                ActorManager.BillboardList.insert_A_after_B(neighbor.billboard, ActorManager.BillboardList.head)
+                ActorManager.BillboardList.insert_A_before_B(neighbor.billboard, ActorManager.BillboardList.tail)
             end
             ActorManager.neighbors[id] = neighbor
             ActorManager.neighbors[id].billboard:write()
@@ -735,8 +735,10 @@ function ActorManager.hide_billboard_list()
     local snip_start = ActorManager.BillboardList.head.prev
     local snip_end = ActorManager.BillboardList.tail.next
 
-    snip_start:set_next(snip_end)
-    snip_end:set_prev(snip_start)
+    if snip_start and snip_end then
+        snip_start:set_next(snip_end)
+        snip_end:set_prev(snip_start)
+    end
 
     ActorManager.BillboardList.head.prev = nil
     ActorManager.BillboardList.tail.next = nil
@@ -746,19 +748,22 @@ function ActorManager.show_billboard_list()
     local snip_start = ActorManager.player.billboard
     local snip_end = ActorManager.player.billboard.next
 
-    ActorManager.BillboardList.head:set_prev(snip_start)
-    snip_start:set_next(ActorManager.BillboardList.head)
+    if snip_end ~= ActorManager.BillboardList.head then
+        ActorManager.BillboardList.head:set_prev(snip_start)
+        snip_start:set_next(ActorManager.BillboardList.head)
 
-    ActorManager.BillboardList.tail:set_next(snip_end)
-    snip_end:set_prev(ActorManager.BillboardList.tail)
+        ActorManager.BillboardList.tail:set_next(snip_end)
+        snip_end:set_prev(ActorManager.BillboardList.tail)
+    end
 end
 
 function ActorManager.update_billboard_list()
-    ActorManager.BillboardList.head.prev = nil
-    ActorManager.BillboardList.tail.next = nil
+    ActorManager.hide_billboard_list()
 
-    local billboard_template = Data:new(ActorManager.player.billboard.addr, Billboard.SIZE) 
-    billboard_template:writedwordrange(Billboard.POS_OFFSET, {0, 0, 0})
+    local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
+    ActorManager.player.billboard = Billboard.from_memory(player_billboard_addr)
+
+    local billboard_template = Data:new(ActorManager.player.billboard.addr, Billboard.SIZE)
     ActorManager.BillboardList.update_template(billboard_template)
     for i, neighbor in pairs(ActorManager.neighbors) do
         if neighbor.billboard then
@@ -766,11 +771,10 @@ function ActorManager.update_billboard_list()
         end
     end
     ActorManager.BillboardList.head:write()
+    memory.writedword(ActorManager.BillboardList.head.addr + Billboard.DRAW_OFFSET, 0) 
     ActorManager.BillboardList.tail:write()
+    memory.writedword(ActorManager.BillboardList.tail.addr + Billboard.DRAW_OFFSET, 0)
 
-    local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-    ActorManager.player.billboard = Billboard.from_memory(player_billboard_addr)
     ActorManager.player.billboard:flesh_forward()
-
     ActorManager.show_billboard_list()
 end

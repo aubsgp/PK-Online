@@ -290,13 +290,13 @@ DWORD WINAPI receive_thread_func(LPVOID _){
 static int HANDSHAKE(lua_State *L){
     bool ok;
 
-    session = WinHttpOpen(L"TemporalSecretary/0.1", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
+    session = WinHttpOpen(L"TemporalSecretary/0.1", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if(session == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP session handle\n");
         return luaL_error(L, "Failed to open HTTP session handle.");
     }
 
-    connection = WinHttpConnect(session, L"localhost", 8080, 0);
+    connection = WinHttpConnect(session, L"192.168.0.6", 6868, 0);
     if(connection == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP connection handle\n");
         WinHttpCloseHandle(session);

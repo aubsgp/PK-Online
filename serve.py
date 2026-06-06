@@ -129,7 +129,6 @@ async def handler(websocket):
     try:
         while True:
             message = await websocket.recv()
-            print(message)
             data = json.loads(message)
             if id != data["plyr"]["id"] or token != data["token"]:
                 await websocket.close(code = 1008, reason = "Invalid token or ID.")
@@ -280,8 +279,10 @@ def process_request(connection, request):
 
 
 async def main():
-    server = await websockets.serve(handler, "localhost", 8080, process_request=process_request)
-    print("Server started on ws://localhost:8080")
+    ip = "192.168.0.6"
+    port = 6868
+    server = await websockets.serve(handler, ip, port, process_request=process_request)
+    print(f"Server started on ws://{ip}:{port}")
     try:
         await asyncio.Future()  # Hand control to the event loop and run forever
     finally:
