@@ -13,29 +13,18 @@ local save_counter_addr = nil
 local num_saves = nil
 local battlesystem_addr = nil
 local battlecontext_addr = nil
+local prev_billboard_addr = nil
 
 local player = Actor:new(pid)
 ActorManager.player = player
 
-local function inject_textures_palettes()
-    -- make texture/palette data visible to the cpu so that we can see it in the memory viewer
-    memory.writebyte(0x04000243, 0x90) -- VRAMCNT D
-    memory.writebyte(0x04000244, 0x80) -- VRAMCNT E
-
-    for i, texture in ipairs(Textures) do
-        local texdata = setmetatable(texture, Data)
-        texdata:write_to_memory(0x6860000 + (i-1)*Textures.SIZE)
-    end
-    for i, palette in ipairs(Palettes) do
-        local paldata = setmetatable(palette, Data)
-        paldata:write_to_memory(Palettes.BASE - i*Palettes.SIZE)
-    end
-
-    -- revert it in the same frame so as to avoid causing visible graphical oddities.
-    memory.writebyte(0x04000243, 0x93) -- VRAMCNT D
-    memory.writebyte(0x04000244, 0x83) -- VRAMCNT E
+local function inject_gfx_data()
+    VRAM.inject_all_sprites()
+    GfxSequence:write_to_memory(0x023c8000)
+    BillboardAnim:write_to_memory(0x023c9000)
+    AnimTexture:write_to_memory(0x023ca000)
 end
-inject_textures_palettes()
+inject_gfx_data()
 
 local function get_addresses()
     mem_base = memory.readdword(mem_base_pointer)
@@ -96,13 +85,18 @@ local function billboard_setup()
         timer = 1
         return
     end
+    local x_coord = memory.readdword(player_billboard_addr + Billboard.POS_OFFSET)
+    if x_coord == 0 then
+        timer = 1
+        return
+    end
     local next_addr = memory.readdword(player_billboard_addr + Billboard.NEXT_OFFSET)
     if next_addr < 0x2000000 or next_addr > 0x3000000 then
         timer = 1
         return
     end
     if not done_wait then
-        timer = 60
+        timer = 10
         done_wait = true
         return
     end
@@ -111,7 +105,6 @@ local function billboard_setup()
     timer = -1
     done_wait = false
 end
-
 while timer >= 0 do
     if timer > 0 then
         emu.frameadvance()
@@ -125,9 +118,16 @@ end
 memory.registerread(BillboardList.addr, 1, function()
     ActorManager.hide_billboard_list()
 end)
+memory.registerwrite(mem_base + 0x1294, 4, function()
+    local map = memory.readdword(mem_base + 0x1294)
+    if Overworld[map] then
+        map = 0
+    end
+    if map ~= player.map then
+        player.map = map
+    end
+end)
 
-local to_update = {false, false, false, false, false, false}
-local read_result = nil
 
 -- Relevant pokeplatinum github pages: https://github.com/pret/pokeplatinum/blob/main/include/battle/battle_mon.h, https://github.com/pret/pokeplatinum/blob/main/include/battle/battle_context.h
 -- Each in-battle Pokemon's battle state is stored as an unencrypted BattleMon struct, which is 0xb4 (=180) bytes long. This includes, for instance, stats, current HP, moves, and so on.
@@ -137,6 +137,8 @@ local read_result = nil
 -- The tricky bit here is that Pokemon not currently out seem to be encrypted, and its nontrivial to figure out both where and with what key. As such, we use a bit of a workaround:
 -- We just track which Pokemon is currently out each turn, and use this to know who to update each frame. This is stored x11c (=284) bytes after the end of the BattleMon array.
 -- This means if a Pokemon in the back levels up, we won't know until the next time it is sent out, or once the battle ends. Otherwise, this should be accurate.
+local to_update = {false, false, false, false, false, false}
+local read_result = nil
 local function in_battle_update()
     -- Check if we are in a double battle, and not a single or tag battle.
     local is_double_battle = false
@@ -170,28 +172,26 @@ local function overworld_update()
     Camera.update_from_memory()
     Obstructions.update_from_memory()
 
-    -- Update location info.
-    local route = memory.readdword(mem_base + 0x1294)
-    local map = route
-    if Overworld[route] then
-        map = 0
-    end
-    if map ~= player.map then
-        player.map = map
-        timer = 100
-        return
-    end
-
     -- Keep an eye on the Player's Billboard struct to make sure it hasn't recently changed, i.e. getting on a bike or using the poketch.
     local billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
     if billboard_addr == 0 then
-        player_billboard_changed = true
-        return
+        if player.billboard.addr ~= 0 then
+            prev_billboard_addr = player.billboard.addr
+            player.billboard.addr = billboard_addr
+            player_billboard_changed = true
+            return
+        end
     else
+        player.billboard.addr = billboard_addr
         player.billboard:update_from_memory()
         if player_billboard_changed then
             player_billboard_changed = false
-            ActorManager:show_billboard_list()
+            if player.billboard.addr ~= prev_billboard_addr then
+                timer = 10
+                return
+            else
+                ActorManager:show_billboard_list()
+            end
         end
     end
 
@@ -231,6 +231,7 @@ end
 
 local function update()
     get_addresses()
+
     -- Keep track of timer nonsense. We don't go past this block if the timer is nonzero.
     if timer == 0 and not in_battle then
         billboard_setup()
@@ -251,7 +252,7 @@ local function update()
     else
         if in_battle then
             in_battle = false
-            inject_textures_palettes()
+            inject_gfx_data()
             billboard_setup()
         end
     end
@@ -332,7 +333,7 @@ local function display() -- Us drawing on the screen.
             nametag:display(display_coords[1], display_coords[2])
         end
     end
-    
+
     if(joypad.get(1)["R"]) then
         debug_memory()
     elseif joypad.get(1)["L"] then
