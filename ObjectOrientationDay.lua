@@ -46,6 +46,20 @@ function Pos:from_tiles(tiles)
     return self:from_pixels({x, y, z})
 end
 
+function Pos:from_dir(dir)
+    if dir == 0 then -- North
+        return self:from_tiles({0, 0, -1})
+    elseif dir == 1 then -- South
+        return self:from_tiles({0, 0, 1})
+    elseif dir == 2 then -- West
+        return self:from_tiles({-1, 0, 0})
+    elseif dir == 3 then -- East
+        return self:from_tiles({1, 0, 0})
+    else
+        return self:from_tiles({0, 0, 0})
+    end
+end
+
 function Pos.__add(pos1, pos2)
     return Pos:new({pos1[1] + pos2[1], pos1[2] + pos2[2], pos1[3] + pos2[3]})
 end
@@ -166,6 +180,22 @@ function Billboard:flesh_back() -- Finds previous billboard in the game's linked
     return self.prev
 end
 
+function Billboard.trace_loop(billboard_addr) -- Makes sure that the linked list of billboards loops back on itself properly.
+    local curr = billboard_addr
+    while true do
+        local next = memory.readdword(curr + Billboard.NEXT_OFFSET)
+        if next == billboard_addr then
+            return true
+        else
+            if next < 0x02200000 or next > 0x02400000 then
+                print("Warning: billboard address out of bounds during loop trace: " .. string.format("0x%x", next))
+                return false
+            end
+            curr = next
+        end
+    end
+end
+
 function Billboard:set_next(next_billboard)
     self.next = next_billboard
     memory.writedword(self.addr + Billboard.NEXT_OFFSET, next_billboard.addr)
@@ -211,6 +241,10 @@ function Billboard:move_to(new_pos)
     memory.writedword(self.addr + Billboard.POS_OFFSET, new_pos[1])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x04, new_pos[2])
     memory.writedword(self.addr + Billboard.POS_OFFSET + 0x08, new_pos[3])
+end
+
+function Billboard:get_dir()
+    return self.anim_type % 4
 end
 
 function Billboard:show()
@@ -350,7 +384,7 @@ Pokemon = {
 }
 Pokemon.__index = Pokemon
 
-function Pokemon:new(species, forme, gender, ability,name, level, stats, moves, held_item, curr_hp)
+function Pokemon:new(species, forme, gender, ability,name, level, stats, moves, held_item, curr_hp, status)
     local instance = setmetatable({}, self)
     instance.species = species or 0
     instance.forme = forme or 0
@@ -362,6 +396,7 @@ function Pokemon:new(species, forme, gender, ability,name, level, stats, moves, 
     instance.moves = moves or {0, 0, 0, 0}
     instance.held_item = held_item or 0
     instance.curr_hp = curr_hp or 0
+    instance.status = status or 0
     return instance
 end
 
@@ -429,6 +464,7 @@ function Pokemon.from_party_memory(index)
     ret.gender = secretary.band(gender_forme, 0x06)/0x02 -- %00000110, bit shifted >> 1
     ret.forme = secretary.band(gender_forme, 0xF8)/0x08 -- %11111000, bit shifted >> 3
 
+    ret.status = mon_data:readbyte(battle_info)
     ret.level = mon_data:readbyte(battle_info + 0x04)
     ret.curr_hp = mon_data:readword(battle_info + 0x06)
     ret.stats = mon_data:readwordrange(battle_info + 0x08, 6)
@@ -436,6 +472,7 @@ function Pokemon.from_party_memory(index)
     -- There is no checksum for this region of memory, so we pull a basic sanity check at the end to make sure we have proper data before returning.
     if not ret:sanity_check() then
         mon_data:decrypt(personality, battle_info, 0x64)
+        ret.status = mon_data:readbyte(battle_info)
         ret.level = mon_data:readbyte(battle_info + 0x04)
         ret.curr_hp = mon_data:readword(battle_info + 0x06)
         ret.stats = mon_data:readwordrange(battle_info + 0x08, 6)
@@ -443,6 +480,7 @@ function Pokemon.from_party_memory(index)
             return false
         end
     end
+
     return ret
 end
 
@@ -455,6 +493,7 @@ function Pokemon.from_battle_memory(index)
     local ability = mon_data:readbyte(0x27)
     local level = mon_data:readbyte(0x34)
     local name = mon_data:readstring(0x36)
+    local status = mon_data:readbyte(0x6c)
     local held_item = mon_data:readword(0x78)
     local gender = secretary.band(mon_data:readbyte(0x7e), 0x0f) -- %00001111
     local curr_hp = mon_data:readword(0x4c)
@@ -472,7 +511,7 @@ function Pokemon.from_battle_memory(index)
         moves[i] = mon_data:readword(offset)
     end
 
-    local ret = Pokemon:new(species, forme, gender, ability,name, level, stats, moves, held_item, curr_hp)
+    local ret = Pokemon:new(species, forme, gender, ability,name, level, stats, moves, held_item, curr_hp, status)
     if not ret:sanity_check() then
         return false
     end
@@ -587,6 +626,7 @@ function ActorManager.hide_billboard_list()
     local snip_end = ActorManager.BillboardList.tail.next
 
     if snip_start and snip_end then
+        print("Hiding billboard list.")
         snip_start:set_next(snip_end)
         snip_end:set_prev(snip_start)
     end
@@ -629,4 +669,20 @@ function ActorManager.update_billboard_list()
     ActorManager.BillboardList.head:write()
     ActorManager.BillboardList.tail:write()
     ActorManager.show_billboard_list()
+end
+
+function ActorManager.player_looking_at()
+    local ret = {}
+
+    local pl_bill = ActorManager.player.billboard
+    local looking_tile = (pl_bill.pos + Pos:from_dir(pl_bill:get_dir())):to_tiles()
+
+    for i, neighbor in pairs(ActorManager.neighbors) do
+        local neighbor_tile = neighbor.billboard.pos:to_tiles()
+        if looking_tile[1] == neighbor_tile[1] and looking_tile[3] == neighbor_tile[3] then
+            table.insert(ret, neighbor)
+        end
+    end
+
+    return ret
 end

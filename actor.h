@@ -2,49 +2,79 @@
 #define ACTOR_H
 
 #include "cJSON.h"
+#include "lua.h"
 #include <stdint.h>
 
 #define ACTOR_DIFFERS 0b00000001
 #define PARTY_DIFFERS 0b00000010
 
+#define FIELD(type, name) type name;
+#define FIELD_STRING(name, size) char name[size];
+#define FIELD_ARRAY(type, name, size) type name[size];
+#define FIELD_PADDING(size) char padding[size];
+
+#define POKEMON_FIELDS \
+    FIELD(uint16_t, species); \
+    FIELD_ARRAY(uint16_t, stats, 6); \
+    FIELD_ARRAY(uint16_t, moves, 4); \
+    FIELD(uint16_t, held_item); \
+    FIELD(uint16_t, curr_hp); \
+    FIELD(uint8_t, level); \
+    FIELD(uint8_t, forme); \
+    FIELD(uint8_t, status); \
+    FIELD(uint8_t, gender); \
+    FIELD(uint8_t, ability); \
+    FIELD_STRING(name, 11);
+
+#define BILLBOARD_FIELDS \
+    FIELD_ARRAY(uint32_t, pos, 3); \
+    FIELD(uint8_t, anim_type); \
+    FIELD(uint8_t, anim_frame); \
+    FIELD(uint8_t, sprite); \
+    FIELD_PADDING(1);
+
+#define ACTOR_FIELDS \
+    FIELD(uint16_t, id); \
+    FIELD(uint16_t, map); \
+    FIELD(uint8_t, pronouns); \
+    FIELD_STRING(name, 11);
+
 typedef struct Pokemon {
-    uint16_t species; //2
-    uint8_t forme; //1 -> 3
-    char gender; //1 -> 4
-    uint8_t ability; //1 -> 5
-    char name[11]; //11 -> 16
-    uint8_t level; //1 -> 17
-    int16_t stats[6]; //12 -> 29
-    int16_t moves[4]; //8 -> 37
-    int16_t held_item; //2 -> 39
-    int16_t curr_hp; //2 -> 41
+    POKEMON_FIELDS
 } Pokemon;
 
 typedef struct Billboard {
-    uint32_t pos[3]; //12
-    uint8_t anim_type; //1 -> 13
-    uint8_t anim_frame; //1 -> 14
-    uint8_t sprite; //1 -> 15
+    BILLBOARD_FIELDS
 } Billboard;
 
 typedef struct Actor {
-    uint16_t id; //2
-    char name[11]; //11 -> 13
-    char pronouns; //1 -> 14
-    uint16_t map; //2 -> 16
-    Billboard billboard; //15 -> 31
-    Pokemon party[6]; //6*41=246 -> 277 bytes
+    Pokemon party[6];
+    Billboard billboard;
+    ACTOR_FIELDS
 } Actor;
 
 cJSON *pokemon_to_json(Pokemon *pkmn);
-Pokemon json_to_pokemon(cJSON *obj);
-char compare_pokemon(Pokemon *a, Pokemon *b);
+Pokemon pokemon_from_json(cJSON *obj);
+lua_State *pokemon_to_lua(Pokemon *pkmn, lua_State *L);
+Pokemon pokemon_from_lua(lua_State *L, int index);
 
-cJSON *party_to_json(Actor *actor);
+cJSON *billboard_to_json(Billboard *bb);
+Billboard billboard_from_json(cJSON *obj);
+lua_State *billboard_to_lua(Billboard *bb, lua_State *L);
+Billboard billboard_from_lua(lua_State *L, int index);
+
 cJSON *actor_to_json(Actor *actor, char include_party);
-Actor json_to_actor(cJSON *obj);
+Actor actor_from_json(cJSON *obj);
+lua_State *actor_to_lua(Actor *actor, lua_State *L);
+Actor actor_from_lua(lua_State *L, int index);
+
 char compare_actors(Actor *a, Actor *b);
 
 void print_actor(Actor *actor);
+
+#undef FIELD
+#undef FIELD_STRING
+#undef FIELD_ARRAY
+#undef FIELD_PADDING
 
 #endif

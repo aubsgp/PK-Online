@@ -19,6 +19,12 @@ rewrite.py
 
 # Other
 pokeplat/
+sprites/
+gen1.png
+gen2.png
+gen3.png
+gen4.png
+sprites.zip
 bugs.txt
 illuminate.lua
 MemorySafetySurvey.lua

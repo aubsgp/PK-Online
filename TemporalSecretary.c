@@ -9,17 +9,20 @@
 
 #define MAX_NEIGHBORS 100
 #define MAX_ACTORS 1000
-#define UPDATE_TIMER 0
+#define UPDATE_TIMER 8 // approximately 1/120 of a second.
 
 static HINTERNET session;
 static HINTERNET connection;
+static HINTERNET websocket;
 
 CRITICAL_SECTION lock;
 
+static volatile char update_flag = 0; // 0 means no update, 1st bit set means actor update, 2nd bit set means party update.
 static volatile bool running = true;
 static volatile bool fatal_error = false;
 static volatile bool should_update = false;
-HANDLE updating_thread;
+HANDLE send_thread;
+HANDLE receive_thread;
 
 static int lowest_index = 1;
 static bool is_alive[MAX_NEIGHBORS+1];
@@ -118,171 +121,94 @@ static int lua_bitshift(lua_State *L){
 }
 //------------------------
 
-static bool POST(){
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "token", token);
-    EnterCriticalSection(&lock);
-    Actor temp = player;
-    LeaveCriticalSection(&lock);
-    cJSON *player_obj = actor_to_json(&temp);
-    cJSON_AddItemToObject(root, "player", player_obj);
-    char *json_string = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-
-    bool ok;
-    HINTERNET request = WinHttpOpenRequest(
-        connection,
-        L"POST",
-        L"/",
-        NULL,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        0
-    );
-    if(request == NULL){
-        error_log("In POST: Failed to open HTTP request handle");
-        free(json_string);
-        return false;
-    }
-
-    ok = WinHttpSendRequest(
-        request,
-        WINHTTP_NO_ADDITIONAL_HEADERS,
-        0,
-        (LPVOID)json_string,
-        strlen(json_string),
-        strlen(json_string),
-        0
-    );
-    if(!ok){
-        error_log("In POST: Failed to send HTTP request");
-        WinHttpCloseHandle(request);
-        free(json_string);
-        return false;
-    }
-
-    ok = WinHttpReceiveResponse(
-        request,
-        NULL
-    );
-    if(!ok){
-        error_log("In POST: Failed to receive HTTP response");
-        WinHttpCloseHandle(request);
-        free(json_string);
-        return false;
-    }
-    
-    WinHttpCloseHandle(request);
-    free(json_string);
-    return true;
-}
-
-static cJSON *GET(){
-    cJSON *signature_root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(signature_root, "id", player.id);
-    cJSON_AddNumberToObject(signature_root, "token", token);
-    char *json_string = cJSON_PrintUnformatted(signature_root);
-    cJSON_Delete(signature_root);
-
-    bool ok;
-
-    HINTERNET request = WinHttpOpenRequest(
-        connection,
-        L"GET",
-        L"/",
-        NULL,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        0
-    );
-    if(request == NULL){
-        error_log("In GET: Failed to open HTTP request handle");
-        free(json_string);
-        return NULL;
-    }
-
-    ok = WinHttpSendRequest(
-        request,
-        WINHTTP_NO_ADDITIONAL_HEADERS,
-        0,
-        (LPVOID)json_string,
-        strlen(json_string),
-        strlen(json_string),
-        0
-    );
-    if(!ok){
-        error_log("In GET: Failed to send HTTP request");
-        WinHttpCloseHandle(request);
-        free(json_string);
-        return NULL;
-    }
-
-    ok = WinHttpReceiveResponse(
-        request,
-        NULL
-    );
-    if(!ok){
-        error_log("In GET: Failed to receive HTTP response");
-        WinHttpCloseHandle(request);
-        free(json_string);
-        return NULL;
-    }
-
-    DWORD response_size;
-    WinHttpQueryDataAvailable(
-        request,
-        &response_size
-    );
-
-    cJSON *response_root = NULL;
-    if(response_size>0){
-        char *response = (char *)malloc(response_size + 1);
-        DWORD bytes_read;
-        WinHttpReadData(
-            request,
-            (LPVOID)response,
-            response_size,
-            &bytes_read
-        );
-        response[bytes_read] = '\0';
-        response_root = cJSON_Parse(response);
-        free(response);
-        if(response_root == NULL){
-            error_log("In GET: HTTP response improperly formatted.");
-            WinHttpCloseHandle(request);
-            free(json_string);
-            return NULL;
-        }
-    }else{
-        error_log("In GET: HTTP response empty.");
-        WinHttpCloseHandle(request);
-        free(json_string);
-        return NULL;
-    }
-    WinHttpCloseHandle(request);
-    free(json_string);
-    return response_root;
-}
-
-DWORD WINAPI start_thread(LPVOID param){
-    error_log("In server-facing thread: Thread started\n");
-    int update_timer = (int)(intptr_t)param;
-    Sleep(1000); // We do a brief initial sleep so the lua script has time to update us on the player state before we start sending updates. A bit hacky, might fix later teehee.
+//------------------------
+//Our threads for communicating with the server
+DWORD WINAPI send_thread_func(LPVOID _){
+    Sleep(1000);
     while(running){
         ULONGLONG before = GetTickCount64();
+        char update_flag_copy;
+        Actor player_copy;
+        EnterCriticalSection(&lock);
+        update_flag_copy = update_flag;
+        update_flag = 0;
+        player_copy = player;
+        LeaveCriticalSection(&lock);
 
-        fatal_error = !POST();
-        if(fatal_error){
-            return 1;
+        if(update_flag_copy){
+            cJSON *root = cJSON_CreateObject();
+            cJSON_AddNumberToObject(root, "token", token);
+            cJSON_AddNumberToObject(root, "flags", update_flag_copy);
+            cJSON *actor_obj;
+
+            if (update_flag_copy & ACTOR_DIFFERS){
+                actor_obj = actor_to_json(&player_copy, 0);
+            }else{
+                actor_obj = cJSON_CreateObject();
+                cJSON_AddNumberToObject(actor_obj, "id", player_copy.id);
+            }
+
+            if (update_flag_copy & PARTY_DIFFERS){
+                cJSON *party_obj = cJSON_CreateArray();
+                for(int i = 0; i < 6; i++){
+                    if (player_copy.party[i].species == 0){
+                        break;
+                    }
+                    cJSON_AddItemToArray(party_obj, pokemon_to_json(&player_copy.party[i]));
+                }
+                cJSON_AddItemToObject(actor_obj, "party", party_obj);
+            }
+
+            cJSON_AddItemToObject(root, "plyr", actor_obj);
+            char *json_string = cJSON_PrintUnformatted(root);
+            cJSON_Delete(root);
+
+            DWORD result = WinHttpWebSocketSend(websocket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, (PVOID)json_string, strlen(json_string));
+            free(json_string);
+            if(result != ERROR_SUCCESS){
+                error_log("In send_thread_func: Failed to send websocket message");
+                fatal_error = true;
+                return 1;
+            }
         }
-        
-        cJSON *update_obj = GET();
-        if(update_obj == NULL){
+
+        ULONGLONG elapsed = GetTickCount64() - before;
+        if(elapsed < UPDATE_TIMER){
+            Sleep((DWORD)(UPDATE_TIMER - elapsed));
+        }
+    }
+    return 0;
+}
+
+DWORD WINAPI receive_thread_func(LPVOID _){
+    DWORD buffer_size = 128 * 1024; // 128 kb should be more than enough for 100 neighbors and their parties, but we can increase this if needed.
+    char *buffer = (char *)malloc(buffer_size);
+    if(!buffer){
+        fatal_error = true;
+        return 1;
+    }
+
+    while(running){
+        DWORD bytes_read;
+        WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
+        DWORD result = WinHttpWebSocketReceive(websocket, buffer, buffer_size, &bytes_read, &type);
+        if(result != ERROR_SUCCESS){
             fatal_error = true;
-            error_log("In server-facing thread: GET failed\n");
+            free(buffer);
             return 1;
         }
+        if(type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE){
+            error_log("Websocket closed by server.");
+            running = false;
+            fatal_error = true;
+            free(buffer);
+            return 0;
+        }else if(type != WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE){
+            continue;
+        }
+        buffer[bytes_read] = '\0';
+        cJSON *update_obj = cJSON_Parse(buffer);
 
         cJSON *keep_obj = cJSON_GetObjectItem(update_obj, "keep");
         cJSON *kick_obj = cJSON_GetObjectItem(update_obj, "kick");
@@ -303,7 +229,7 @@ DWORD WINAPI start_thread(LPVOID param){
         uint8_t to_update[MAX_NEIGHBORS+1] = {0};
         bool something_happened = false;
 
-        // Remove all tombstones from the our array of actors.
+        // Remove anybody we're told to kick from our array of actors.
         for(int i = 0; i < goner_count; i++){
             int id = cJSON_GetArrayItem(kick_obj, i)->valueint;
             if(id >= 0 && id < MAX_ACTORS && temp_indices[id] != 0xff){
@@ -323,7 +249,7 @@ DWORD WINAPI start_thread(LPVOID param){
         // Add or update all players with meaningful changes.
         int num_to_update = 0;
         for(int i = 0; i < player_count; i++){
-            Actor plyr = json_to_actor(cJSON_GetArrayItem(keep_obj, i));
+            Actor plyr = actor_from_json(cJSON_GetArrayItem(keep_obj, i));
             // If this player isn't currently in our local array and there's a free slot, add them to the neighbors array and mark the slot as used.
             if(temp_indices[plyr.id] == 0xff && lowest_index < MAX_NEIGHBORS){
                 temp_indices[plyr.id] = lowest_index;
@@ -357,229 +283,99 @@ DWORD WINAPI start_thread(LPVOID param){
         }
         LeaveCriticalSection(&lock);
         cJSON_Delete(update_obj);
-
-        ULONGLONG after = GetTickCount64();
-        ULONGLONG elapsed_time = (after - before);
-        if(elapsed_time < update_timer){
-            Sleep((DWORD)(update_timer - elapsed_time));
-        }
     }
+
+    free(buffer);
     return 0;
 }
+//------------------------
 
+
+//------------------------
+//Open a connection with the server and get a persistent websocket handle. Also get the player's assigned id and session token, which will be needed for future requests.
 static int HANDSHAKE(lua_State *L){
     bool ok;
 
-    session = WinHttpOpen(
-        L"TemporalSecretary/0.1",
-        WINHTTP_ACCESS_TYPE_NO_PROXY,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS,
-        0
-    );
+    session = WinHttpOpen(L"TemporalSecretary/0.1", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if(session == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP session handle\n");
         return luaL_error(L, "Failed to open HTTP session handle.");
     }
-    connection = WinHttpConnect(
-        session,
-        L"localhost",
-        8080,
-        0
-    );
+
+    connection = WinHttpConnect(session, L"pkonlinebeta.ddns.net", 6868, 0);
     if(connection == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP connection handle\n");
         WinHttpCloseHandle(session);
         return luaL_error(L, "Failed to open HTTP connection handle.");
     }
     
-    char *body = "handshake";
-    HINTERNET request = WinHttpOpenRequest(
-        connection,
-        L"POST",
-        L"/",
-        NULL,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        0
-    );
+    //Send a blank "GET" and update to a persisten websocket connection. 
+    HINTERNET request = WinHttpOpenRequest(connection, L"GET", L"/", NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
     if(request == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP request handle");
         return luaL_error(L, "Failed to open HTTP request handle.");
     }
-    ok = WinHttpSendRequest(
-        request,
-        WINHTTP_NO_ADDITIONAL_HEADERS,
-        0,
-        (LPVOID)body,
-        strlen(body),
-        strlen(body),
-        0
-    );
+    WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, NULL, 0);
+
+    ok = WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, NULL, 0, 0, 0);
     if(!ok){
         WinHttpCloseHandle(request);
         error_log("In HANDSHAKE: Failed to send HTTP request");
         return luaL_error(L, "Failed to send HTTP request.");
     }
     
-    ok = WinHttpReceiveResponse(
-        request,
-        NULL
-    );
+    ok = WinHttpReceiveResponse(request, NULL);
     if(!ok){
         WinHttpCloseHandle(request);
         error_log("In HANDSHAKE: Failed to receive HTTP response");
         return luaL_error(L, "Failed to receive HTTP response.");
     }
-    DWORD response_size;
-    WinHttpQueryDataAvailable(
-        request,
-        &response_size
-    );
 
-    if(response_size>0){
-        char *response = (char *)malloc(response_size + 1);
-        DWORD bytes_read;
-        WinHttpReadData(
-            request,
-            (LPVOID)response,
-            response_size,
-            &bytes_read
-        );
-        response[bytes_read] = '\0';
-        sscanf(response, "%u %u", &player.id, &token);
-        free(response);
 
-        FILE *log = fopen("debug.log", "a");
-        fprintf(log, "Handshake returned player id %u and token %u\n", player.id, token);
-        fflush(log);
-        fclose(log);
-
-        lua_pushinteger(L, player.id);
-    }else{
+    websocket = WinHttpWebSocketCompleteUpgrade(request, 0);
+    if(websocket == NULL){
         WinHttpCloseHandle(request);
-        error_log("In HANDSHAKE: No handshake response.\n");
-        return luaL_error(L, "No handshake response.");
+        error_log("In HANDSHAKE: Failed to upgrade to websocket");
+        return luaL_error(L, "Failed to upgrade to websocket.");
     }
+     WinHttpCloseHandle(request);
 
-    WinHttpCloseHandle(request);
+    char response[64];
+    DWORD bytes_read;
+    WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
+    DWORD result = WinHttpWebSocketReceive(websocket, response, sizeof(response), &bytes_read, &type);
+    if (result != ERROR_SUCCESS){
+        WinHttpCloseHandle(websocket);
+        error_log("In HANDSHAKE: Failed to receive websocket response");
+        return luaL_error(L, "Failed to receive websocket response.");
+    }
+    response[bytes_read] = '\0';
+    cJSON *response_obj = cJSON_Parse(response);
+    player.id = cJSON_GetObjectItem(response_obj, "id")->valueint;
+    token = (unsigned int)cJSON_GetObjectItem(response_obj, "token")->valuedouble;
+    cJSON_Delete(response_obj);
+    lua_pushinteger(L, player.id);
+
+    FILE *log = fopen("debug.log", "a");
+    fprintf(log, "Handshake returned player id %u and token %u\n", player.id, token);
+    fflush(log);
+    fclose(log);
+
     
-    memset(indices, 0xff, MAX_ACTORS);
+    memset(indices, 0xff, MAX_ACTORS+1);
     
     InitializeCriticalSection(&lock);
-    updating_thread = CreateThread(NULL, 0, start_thread, (LPVOID)UPDATE_TIMER, 0, NULL);
+    send_thread = CreateThread(NULL, 0, send_thread_func, NULL, 0, NULL);
+    receive_thread = CreateThread(NULL, 0, receive_thread_func, NULL, 0, NULL);
 
     return 1;
 }
 
 static int update_player(lua_State *L){
-    Actor temp;
-
-    lua_getfield(L, 1, "id");
-    temp.id = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    lua_getfield(L, 1, "name");
-    strcpy(temp.name, lua_tostring(L, -1));
-    lua_pop(L, 1);
-
-    lua_getfield(L, 1, "pronouns");
-    temp.pronouns = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    lua_getfield(L, 1, "map");
-    temp.map = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    // BILLBOARD PROCESSING
-    lua_getfield(L, 1, "billboard");
-
-    lua_getfield(L, -1, "pos");
-    for(int i = 0; i < 3; i++){
-        lua_rawgeti(L, -1, i+1);
-        temp.billboard.pos[i] = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
-
-    lua_getfield(L, -1, "sprite");
-    temp.billboard.sprite = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    lua_getfield(L, -1, "anim_type");
-    temp.billboard.anim_type = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-    
-    lua_getfield(L, -1, "anim_frame");
-    temp.billboard.anim_frame = lua_tointeger(L, -1);
-    lua_pop(L, 1);
-
-    lua_pop(L, 1);
-
-    // PARTY PROCESSING
-    lua_getfield(L, 1, "party");
-    memset(&temp.party, 0, sizeof(temp.party));
-    for(int i = 0; i < 6; i++){
-        Pokemon pkmn;
-        lua_rawgeti(L, -1, i+1);
-        if(lua_isnil(L, -1)){
-            break;
-        }
-
-        lua_getfield(L, -1, "species");
-        pkmn.species = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "forme");
-        pkmn.forme = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "gender");
-        pkmn.gender = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "ability");
-        pkmn.ability = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "name");
-        strcpy(pkmn.name, lua_tostring(L, -1));
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "level");
-        pkmn.level = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "curr_hp");
-        pkmn.curr_hp = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "stats");
-        for(int j = 0; j < 6; j++){
-            lua_rawgeti(L, -1, j+1);
-            pkmn.stats[j] = lua_tointeger(L, -1);
-            lua_pop(L, 1);
-        }
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "held_item");
-        pkmn.held_item = lua_tointeger(L, -1);
-        lua_pop(L, 1);
-
-        lua_getfield(L, -1, "moves");
-        for(int j = 0; j < 4; j++){
-            lua_rawgeti(L, -1, j+1);
-            pkmn.moves[j] = lua_tointeger(L, -1);
-            lua_pop(L, 1);
-        }
-        lua_pop(L, 1);
-
-        temp.party[i] = pkmn;
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
+    Actor temp = actor_from_lua(L, 1);
 
     EnterCriticalSection(&lock);
+    update_flag |= compare_actors(&player, &temp);
     player = temp;
     LeaveCriticalSection(&lock);
 
@@ -607,100 +403,17 @@ static int get_neighbors(lua_State *L){
     LeaveCriticalSection(&lock);
 
     lua_newtable(L); // stack: return table (RT)
-    lua_newtable(L); // stack: update table (UT)
-    lua_newtable(L); // stack: update table (UT), kick table (KT)
+    lua_newtable(L); // stack: RT, update table (UT)
+    lua_newtable(L); // stack: RT, UT, kick table (KT)
 
     int update_index = 1;
     int kick_index = 1;
     for(int i = 0; i < MAX_NEIGHBORS; i++){
         if(temp_delta[i] == 1){
-            lua_newtable(L); // stack: return table (RT), update table (UT), kick table (KT), neighbor table (NT)
-
-            lua_pushinteger(L, i); // RT, UT, KT, NT, (local) id
-            lua_setfield(L, -2, "id"); // RT, UT, KT, NT <- id field added
-
-            lua_pushstring(L, temp_neighbors[i].name); // RT, UT, KT, NT, name
-            lua_setfield(L, -2, "name"); // RT, UT, KT, NT <- name field added
-
-            lua_pushinteger(L, temp_neighbors[i].pronouns); // RT, UT, KT, NT <- pronouns index added
-            lua_setfield(L, -2, "pronouns"); // RT, UT, KT, NT <- pronouns field added
-
-            lua_pushinteger(L, temp_neighbors[i].map); // RT, UT, KT, NT, map
-            lua_setfield(L, -2, "map"); // RT, UT, KT, NT <- map field added
-
-            // BILLBOARD PROCESSING
-            lua_newtable(L); // RT, UT, KT, NT, billboard table (BT)
-
-            lua_newtable(L); // UT, KT, NT, BT, pos table (PoT)
-            for(int j = 0; j < 3; j++){
-                lua_pushinteger(L, temp_neighbors[i].billboard.pos[j]); // RT, UT, KT, NT, BT, PoT, coordinate j
-                lua_rawseti(L, -2, j+1); // RT, UT, KT, NT, BT, PoT <- coordinate j added
-            }
-            lua_setfield(L, -2, "pos"); // RT, UT, KT, NT, BT <- pos field added
-
-            lua_pushinteger(L, temp_neighbors[i].billboard.sprite); // RT, UT, KT, NT, BT, sprite
-            lua_setfield(L, -2, "sprite"); // RT, UT, KT, NT, BT <- sprite field added
-
-            lua_pushinteger(L, temp_neighbors[i].billboard.anim_type); // RT, UT, KT, NT, BT, anim_type
-            lua_setfield(L, -2, "anim_type"); // RT, UT, KT, NT, BT <- anim_type field added
-
-            lua_pushinteger(L, temp_neighbors[i].billboard.anim_frame); // RT, UT, KT, NT, BT, anim_frame
-            lua_setfield(L, -2, "anim_frame"); // RT, UT, KT, NT, BT <- anim_frame field added
-
-            lua_setfield(L, -2, "billboard"); // RT, UT, KT, NT <- billboard field added
-            
-            // PARTY PROCESSING
-            lua_newtable(L); // UT, KT, NT, party table (PaT)
-            for(int j = 0; j < 6; j++){
-                if(temp_neighbors[i].party[j].species == 0){
-                    break;
-                }
-
-                lua_newtable(L); // UT, KT, NT, PaT, Pokemon table (PkT)
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].species); // RT, UT, KT, NT, PaT, PkT, species
-                lua_setfield(L, -2, "species"); // UT, KT, NT, PaT, PkT <- species field added
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].forme); // RT, UT, KT, NT, PaT, PkT, forme
-                lua_setfield(L, -2, "forme"); // UT, KT, NT, PaT, PkT <- forme field added
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].gender); // RT, UT, KT, NT, PaT, PkT, gender
-                lua_setfield(L, -2, "gender"); // UT, KT, NT, PaT, PkT <- gender field added
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].ability); // RT, UT, KT, NT, PaT, PkT, ability
-                lua_setfield(L, -2, "ability"); // UT, KT, NT, PaT, PkT <- ability field added
-
-                lua_pushstring(L, temp_neighbors[i].party[j].name); // RT, UT, KT, NT, PaT, PkT, name
-                lua_setfield(L, -2, "name"); // UT, KT, NT, PaT, PkT <- name field added
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].level); // RT, UT, KT, NT, PaT, PkT, level
-                lua_setfield(L, -2, "level"); // UT, KT, NT, PaT, PkT <- level field added
-
-                lua_newtable(L); // UT, KT, NT, PaT, PkT, stats table (StT)
-                for(int k = 0; k < 6; k++){
-                    lua_pushinteger(L, temp_neighbors[i].party[j].stats[k]); // RT, UT, KT, NT, PaT, PkT, StT, stat k
-                    lua_rawseti(L, -2, k+1); // UT, KT, NT, PaT, PkT, StT <- stat k added
-                }
-                lua_setfield(L, -2, "stats"); // UT, KT, NT, PaT, PkT <- stats field added
-
-                lua_newtable(L); // UT, KT, NT, PaT, PkT, moves table (MvT)
-                for(int k = 0; k < 4; k++){
-                    lua_pushinteger(L, temp_neighbors[i].party[j].moves[k]); // RT, UT, KT, NT, PaT, PkT, MvT, move k
-                    lua_rawseti(L, -2, k+1); // UT, KT, NT, PaT, PkT, MvT <- move k added
-                }
-                lua_setfield(L, -2, "moves"); // UT, KT, NT, PaT, PkT <- moves field added
-                
-                lua_pushinteger(L, temp_neighbors[i].party[j].held_item); // RT, UT, KT, NT, PaT, PkT, held_item
-                lua_setfield(L, -2, "held_item"); // UT, KT, NT, PaT, PkT <- held_item field added
-
-                lua_pushinteger(L, temp_neighbors[i].party[j].curr_hp); // RT, UT, KT, NT, PaT, PkT, curr_hp
-                lua_setfield(L, -2, "curr_hp"); // UT, KT, NT, PaT, PkT <- curr_hp field added
-
-                lua_rawseti(L, -2, j+1); // UT, KT, NT, PaT <- Pokemon added at index j+1
-            }
-            lua_setfield(L, -2, "party"); // RT, UT, KT, NT <- party field added
-            
-            lua_rawseti(L, -3, update_index++); // RT, UT <- NT added at index i+1, KT
+            actor_to_lua(&temp_neighbors[i], L); // RT, UT, KT, actor_table
+            lua_pushinteger(L, i); // RT, UT, KT, actor_table, (local) id.
+            lua_setfield(L, -3, "id");  // RT, UT, KT, actor_table <- (local) id added, overwriting field "id"
+            lua_rawseti(L, -3, update_index++); // RT, UT <- actor added at field "update" with index update_index, KT
         }else if(temp_delta[i] == -1){
             lua_pushinteger(L, i); // RT, UT, KT, (local) id.
             lua_rawseti(L, -2, kick_index++); // RT, UT, KT <- id added at index i+1.
@@ -733,15 +446,24 @@ __declspec(dllexport) int luaopen_TemporalSecretary(lua_State *L){
     return 1;
 }
 
+//If we fail, we don't want to make the game crash as well, which means cleaning up after ourselves.
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
     if(fdwReason == DLL_PROCESS_DETACH){
         running = false;
         if(lpvReserved == NULL){
-            WaitForSingleObject(updating_thread, 2000);
-            CloseHandle(updating_thread);
+            WaitForSingleObject(send_thread, 2000);
+            CloseHandle(send_thread);
+
+            WaitForSingleObject(receive_thread, 2000);
+            CloseHandle(receive_thread);
+
+            WinHttpWebSocketClose(websocket, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, NULL, 0);
+            WinHttpCloseHandle(websocket);
+
             if(connection != NULL){
                 WinHttpCloseHandle(connection);
             }
+
             if(session != NULL){
                 WinHttpCloseHandle(session);
             }

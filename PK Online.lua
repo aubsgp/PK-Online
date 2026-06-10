@@ -6,6 +6,9 @@ require("SpriteData")
 require("ObjectOrientationDay")
 require("Display")
 require("FictionalDictionary")
+local GDStrings = require("GDStrings")
+local menu_sprites = GDStrings[1]
+local gender_symbols = GDStrings[2]
 
 local mem_base_pointer = memory.readdword(0x2000BA8) + 0x20 -- Although we do a read here, this value should always be fixed across sessions. The read is primarily for future-proofing against the script being ported to other romhacks.
 local mem_base = nil
@@ -90,8 +93,7 @@ local function billboard_setup()
         timer = 1
         return
     end
-    local next_addr = memory.readdword(player_billboard_addr + Billboard.NEXT_OFFSET)
-    if next_addr < 0x2000000 or next_addr > 0x3000000 then
+    if not Billboard.trace_loop(player_billboard_addr) then
         timer = 1
         return
     end
@@ -168,16 +170,14 @@ end
 
 local function overworld_update()
     -- Update graphical info.
-    get_addresses()
     Camera.update_from_memory()
     Obstructions.update_from_memory()
 
     -- Keep an eye on the Player's Billboard struct to make sure it hasn't recently changed, i.e. getting on a bike or using the poketch.
     local billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
     if billboard_addr == 0 then
-        if player.billboard.addr ~= 0 then
+        if not player_billboard_changed then
             prev_billboard_addr = player.billboard.addr
-            player.billboard.addr = billboard_addr
             player_billboard_changed = true
             return
         end
@@ -185,12 +185,17 @@ local function overworld_update()
         player.billboard.addr = billboard_addr
         player.billboard:update_from_memory()
         if player_billboard_changed then
-            player_billboard_changed = false
-            if player.billboard.addr ~= prev_billboard_addr then
-                timer = 10
-                return
+            if Billboard.trace_loop(player.billboard.addr) then
+                player_billboard_changed = false
+                if player.billboard.addr ~= prev_billboard_addr then
+                    print("Player billboard address changed from " .. string.format("0x%x", prev_billboard_addr) .. " to " .. string.format("0x%x", player.billboard.addr))
+                    timer = 20
+                    return
+                else
+                    ActorManager:show_billboard_list()
+                end
             else
-                ActorManager:show_billboard_list()
+                return
             end
         end
     end
@@ -211,8 +216,13 @@ local function overworld_update()
         end
     end
 
+    -- Check for memory corruption. This is neither comprehensive nor fully accurate, but it's a good warning point.
     local free_billboards_addr = memory.readdword(BillboardList.addr + Billboard.SIZE + 0x0c)
     local free_billboards = Data:new(free_billboards_addr, 0x40*0x04)
+    if player.billboard.addr ~= 0 and not player_billboard_changed and not Billboard.trace_loop(player.billboard.addr) then
+        -- If the player's billboard is invalid, then the game is probably in the middle of deleting the billboard list, and we should watch out for potential memory corruption.
+        corruption_detected = true
+    end
     for i = 1, 0x40 do
         local offset = (i-1)*0x04
         local addr = free_billboards:readdword(offset)
@@ -231,7 +241,6 @@ end
 
 local function update()
     get_addresses()
-
     -- Keep track of timer nonsense. We don't go past this block if the timer is nonzero.
     if timer == 0 and not in_battle then
         billboard_setup()
@@ -309,6 +318,7 @@ local function debug_gfx()
     pcall(function() gui.text(5, 35, string.format("player sprite: %d", ActorManager.player.billboard.sprite)) end)
     pcall(function() gui.text(5, 50, string.format("start menu showing: %s", tostring(Obstructions.menus.start_menu.is_showing))) end)
     pcall(function() gui.text(5, 65, string.format("text box showing: %s", tostring(Obstructions.menus.text_box.is_showing))) end)
+    pcall(function() gui.text(5, 80, string.format("in battle: %s", tostring(in_battle))) end)
 
     pcall(function() gui.text(240, 182, string.format("%d", frame_counter)) end)
 end
@@ -325,7 +335,7 @@ end
 
 local function display() -- Us drawing on the screen.
     -- Display names of neighbors above their heads.
-    if not in_battle and ActorManager.player.billboard.addr ~= 0 then
+    if not in_battle and ActorManager.player.billboard.addr ~= 0 and not player_billboard_changed then
         for i, neighbor in pairs(ActorManager.neighbors) do
             local nametag = Text:new(neighbor.name)
             local name_coords = neighbor.billboard.pos + Pos:from_tiles({0, 2, -1})
@@ -338,6 +348,46 @@ local function display() -- Us drawing on the screen.
         debug_memory()
     elseif joypad.get(1)["L"] then
         debug_gfx()
+    end
+
+    if(joypad.get(1)["A"]) and not Obstructions.menus.start_menu.is_showing and not Obstructions.menus.text_box.is_showing then
+        local looking_at = ActorManager:player_looking_at()
+        local neighbor = looking_at[1]
+        if neighbor then
+            local x = 2
+            local y = -190
+            gui.drawbox(x, y, x + 133, y + 152, 0xffffffdd, 0x000000ff)
+            for i = 1, 6 do
+                local mon = neighbor.party[i]
+                if mon then
+                    gui.gdoverlay(x, y - 5 + (i-1)*25, menu_sprites[mon.species][mon.forme][math.floor(frame_counter/8)%2])
+
+                    gui.text(x + 32, y + 7 + (i-1)*25, "l")
+                    gui.text(x + 36, y + 7 + (i-1)*25, "v")
+                    pcall(function() gui.text(x + 43, y + 7 + (i-1)*25, string.format("%d", mon.level)) end)
+                    pcall(function() gui.text(x + 61, y + 7 + (i-1)*25, mon.name) end)
+                    if mon.gender < 2 then
+                        gui.gdoverlay(x + 121, y + 6 + (i-1)*25, gender_symbols[mon.gender + 1])
+                    end
+                    
+                    -- HP Bars. The color changes based on how much HP is left.
+                    local color = 0x00ff00ff
+                    local hp_ratio = mon.curr_hp/mon.stats[1]
+                    if math.floor(48*hp_ratio)/48 <= 0.2 then
+                        color = 0xff0000ff
+                    elseif math.floor(48*hp_ratio)/48 <= 0.5 then
+                        color = 0xffff00ff
+                    end
+                    gui.drawline(x + 31, y + 17 + (i-1)*25, x + 31, y + 22 + (i-1)*25, 0x000000ff)
+                    gui.drawline(x + 32, y + 17 + (i-1)*25, x + 32, y + 21 + (i-1)*25, 0x000000ff)
+                    gui.drawline(x + 33, y + 20 + (i-1)*25, x + 36, y + 20 + (i-1)*25, 0x000000ff)
+                    gui.drawline(x + 37, y + 20 + (i-1)*25, x + 38, y + 20 + (i-1)*25, 0x00000080)
+                    gui.drawbox(x + 32, y + 17 + (i-1)*25, x + 128, y + 19 + (i-1)*25, 0xffffffff, 0x000000ff)
+                    gui.drawbox(x + 32, y + 17 + (i-1)*25, x + 32 + 96*hp_ratio, y + 19 + (i-1)*25, color, 0x000000ff)
+                    gui.drawline(x + 129, y + 17 + (i-1)*25, x + 129, y + 19 + (i-1)*25, 0x000000ff)
+                end
+            end
+        end
     end
 
     if(corruption_detected) then
