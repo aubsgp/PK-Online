@@ -9,6 +9,7 @@ require("FictionalDictionary")
 local GDStrings = require("GDStrings")
 local menu_sprites = GDStrings[1]
 local gender_symbols = GDStrings[2]
+local status_sprites = GDStrings[3]
 
 local mem_base_pointer = memory.readdword(0x2000BA8) + 0x20 -- Although we do a read here, this value should always be fixed across sessions. The read is primarily for future-proofing against the script being ported to other romhacks.
 local mem_base = nil
@@ -333,6 +334,41 @@ local function debug_memory()
     pcall(function() gui.text(5, 65, string.format("save counter: %d", memory.readbyte(save_counter_addr))) end)
 end
 
+function gui.drawcircle(x, y, radius, color)
+    local pixels = {}
+    for i = 0, 90, 5 do
+        local radian = math.rad(i)
+        local x_offset = math.floor(radius*math.cos(radian))
+        local y_offset = math.floor(radius*math.sin(radian))
+        pixels[{x_offset, y_offset}] = true
+    end
+    for coords, _ in pairs(pixels) do
+        gui.pixel(x + coords[1], y + coords[2], color)
+        gui.pixel(x - coords[1], y + coords[2], color)
+        gui.pixel(x + coords[1], y - coords[2], color)
+        gui.pixel(x - coords[1], y - coords[2], color)
+    end
+end
+
+local function draw_poison_bubble(x, y, radius)
+    local purple = 0xd000d0b0
+    gui.drawcircle(x, y, radius + 1, 0xffffffb0)
+    gui.drawcircle(x, y, radius, purple)
+    gui.drawcircle(x, y, radius - 1, 0xffffffb0)
+    gui.pixel(x - radius + 2, y, purple - 0x00000040)
+    gui.pixel(x - radius + 3, y + 1, purple - 0x00000040)
+end
+
+local function draw_paralysis_carat(x, y, orientation)
+    if orientation%2 == 0 then
+        gui.line(x, y, x + 3, y - 3, 0xffff00ff)
+        gui.line(x + 3, y - 3, x, y - 6, 0xffff00ff)
+    else
+        gui.line(x, y, x - 3, y - 3, 0xffff00ff)
+        gui.line(x - 3, y - 3, x, y - 6, 0xffff00ff)
+    end
+end
+
 local function display() -- Us drawing on the screen.
     -- Display names of neighbors above their heads.
     if not in_battle and ActorManager.player.billboard.addr ~= 0 and not player_billboard_changed then
@@ -356,18 +392,71 @@ local function display() -- Us drawing on the screen.
         if neighbor then
             local x = 2
             local y = -190
-            gui.drawbox(x, y, x + 133, y + 152, 0xffffffdd, 0x000000ff)
+            gui.drawbox(x, y, x + 133, y + 152, 0xfffffff0, 0x000000ff)
             for i = 1, 6 do
                 local mon = neighbor.party[i]
                 if mon then
-                    gui.gdoverlay(x, y - 5 + (i-1)*25, menu_sprites[mon.species][mon.forme][math.floor(frame_counter/8)%2])
+                    local y_offset = (i-1)*25
 
-                    gui.text(x + 32, y + 7 + (i-1)*25, "l")
-                    gui.text(x + 36, y + 7 + (i-1)*25, "v")
-                    pcall(function() gui.text(x + 43, y + 7 + (i-1)*25, string.format("%d", mon.level)) end)
-                    pcall(function() gui.text(x + 61, y + 7 + (i-1)*25, mon.name) end)
+                    local anim_speed = 1
+                    if secretary.band(mon.status, 0x27) ~= 0 or mon.curr_hp == 0 then -- 0b00100111, Sleep, Freeze, and Faint.
+                        anim_speed = 0
+                    elseif secretary.band(mon.status, 0x40) ~= 0 then -- 0b01000000, Paralysis
+                        anim_speed = 0.25
+                    elseif mon.status ~= 0 then -- 0b10001000, Poison, Toxic, and Burn.
+                        anim_speed = 0.5
+                    end
+                    local frame = math.floor(frame_counter*anim_speed/8)%2
+                    gui.gdoverlay(x, y + y_offset - 5, menu_sprites.get_sprite(mon, frame))
+
+                    frame = math.floor(frame_counter / 15)
+                    if secretary.band(mon.status, 0x07) ~= 0 and frame ~= 0  then -- 0b00000111, Sleep
+                        local offsets = {
+                            {0, 4},
+                            {5, 1},
+                            {10, 0}
+                        }
+                        gui.text(x + 15 + offsets[frame][1], y + y_offset + offsets[frame][2], "z")
+                    
+                    elseif secretary.band(mon.status, 0x88) ~= 0 and frame ~= 0 then -- 0b10001000, Poison and Toxic.
+                        if frame == 1 then
+                            draw_poison_bubble(x + 20, y + y_offset + 9, 3)
+                        elseif frame == 2 then
+                            draw_poison_bubble(x + 7, y + y_offset + 6, 2)
+                        elseif frame == 3 then
+                            draw_poison_bubble(x + 14, y + y_offset + 3, 3)
+                        end
+                    
+                    elseif secretary.band(mon.status, 0x10) ~= 0 and frame ~= 0 then -- 0b00010000, Burn
+                        gui.gdoverlay(x + 4, y + y_offset + 16, status_sprites.burn[frame])
+
+                    elseif secretary.band(mon.status, 0x20) ~= 0 then -- 0b00100000, Freeze
+                        if math.floor(frame_counter / 6) <= 4 then
+                            gui.gdoverlay(x + 10, y + y_offset + 10, status_sprites.sparkle[math.floor(frame_counter / 6) + 1])
+                        end
+
+                    elseif secretary.band(mon.status, 0x40) ~= 0 and frame ~= 0 then -- 0b01000000, Paralysis
+                        if frame == 1 then
+                            draw_paralysis_carat(x + 10, y + y_offset + 10, 0)
+                            draw_paralysis_carat(x + 10, y + y_offset + 16, 1)
+
+                            draw_paralysis_carat(x + 20, y + y_offset + 20, 1)
+                            draw_paralysis_carat(x + 20, y + y_offset + 26, 0)
+                        elseif frame == 2 then
+                            draw_paralysis_carat(x + 15, y + y_offset + 10, 1)
+                            draw_paralysis_carat(x + 15, y + y_offset + 16, 0)
+                        elseif frame == 3 then
+                            draw_paralysis_carat(x + 5, y + y_offset + 12, 1)
+                            draw_paralysis_carat(x + 5, y + y_offset + 18, 0)
+                        end
+                    end
+
+                    gui.text(x + 32, y + y_offset + 7, "l")
+                    gui.text(x + 36, y + y_offset + 7, "v")
+                    pcall(function() gui.text(x + 43, y + y_offset + 7, string.format("%d", mon.level)) end)
+                    pcall(function() gui.text(x + 61, y + y_offset + 7, mon.name) end)
                     if mon.gender < 2 then
-                        gui.gdoverlay(x + 121, y + 6 + (i-1)*25, gender_symbols[mon.gender + 1])
+                        gui.gdoverlay(x + 121, y + y_offset + 6, gender_symbols[mon.gender + 1])
                     end
                     
                     -- HP Bars. The color changes based on how much HP is left.
@@ -378,13 +467,13 @@ local function display() -- Us drawing on the screen.
                     elseif math.floor(48*hp_ratio)/48 <= 0.5 then
                         color = 0xffff00ff
                     end
-                    gui.drawline(x + 31, y + 17 + (i-1)*25, x + 31, y + 22 + (i-1)*25, 0x000000ff)
-                    gui.drawline(x + 32, y + 17 + (i-1)*25, x + 32, y + 21 + (i-1)*25, 0x000000ff)
-                    gui.drawline(x + 33, y + 20 + (i-1)*25, x + 36, y + 20 + (i-1)*25, 0x000000ff)
-                    gui.drawline(x + 37, y + 20 + (i-1)*25, x + 38, y + 20 + (i-1)*25, 0x00000080)
-                    gui.drawbox(x + 32, y + 17 + (i-1)*25, x + 128, y + 19 + (i-1)*25, 0xffffffff, 0x000000ff)
-                    gui.drawbox(x + 32, y + 17 + (i-1)*25, x + 32 + 96*hp_ratio, y + 19 + (i-1)*25, color, 0x000000ff)
-                    gui.drawline(x + 129, y + 17 + (i-1)*25, x + 129, y + 19 + (i-1)*25, 0x000000ff)
+                    gui.drawline(x + 31, y + y_offset + 17, x + 31, y + y_offset + 22, 0x000000ff)
+                    gui.drawline(x + 32, y + y_offset + 17, x + 32, y + y_offset + 21, 0x000000ff)
+                    gui.drawline(x + 33, y + y_offset + 20, x + 36, y + y_offset + 20, 0x000000ff)
+                    gui.drawline(x + 37, y + y_offset + 20, x + 38, y + y_offset + 20, 0x00000080)
+                    gui.drawbox(x + 32, y + y_offset + 17, x + 128, y + y_offset + 19, 0xffffffff, 0x000000ff)
+                    gui.drawbox(x + 32, y + y_offset + 17, x + 32 + 96*hp_ratio, y + y_offset + 19, color, 0x000000ff)
+                    gui.drawline(x + 129, y + y_offset + 17, x + 129, y + y_offset + 19, 0x000000ff)
                 end
             end
         end
