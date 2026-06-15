@@ -1,30 +1,14 @@
 """
 Design document:
 - The server will maintain four main data structures:
-    1. players: a dict of player structs indexed by player ID. each player object will contain the public-facing state of the player, such as their position, map, party, and other information that can be safely shared with other clients.
-    2. private_states: a dict of PrivatePlayerState objects indexed by player ID. this contains tokens, approximate locations, timestamps for last communication and last significant update, and IP addresses for each player.
-    3. world: a dict of sets of player IDs indexed by approximate location. used to quickly determine which neighbors to send to the player.
-    4. tombstones: a dict of dicts {player ID: expiration timer} indexed by approximate location. used to quickly communicate which neighbors have recently left a given location so that clients can remove them from their local view.
+    1. players: A dict of player structs indexed by player ID. Each player object will contain the public-facing state of the player, such as their position, map, party, and other information that can be safely shared with other clients.
+    2. private_states: A dict of PrivatePlayerState objects indexed by player ID. This contains tokens, chunk coordinates, timestamps for last communication and last significant update, and IP addresses for each player.
+    3. world: A dict of sets of player IDs indexed by chunk coordinates. Used to quickly determine which neighbors to send to the player.
 
-Currently, the idea is to have things be client-controlled, where the client will poll at a rate of 5Hz. The server will push nothing unless we run into bottlenecks related to player density.
-Whenever the client updates the server, the server will update their info in players. They will also update the corresponding timestamps and apprxoimate locations. if the update has any notable delta (position, party, etc), it'll additionally note that.
-    - If the player changes its approximate location, a tombstone is left at their prior location so any clients tracking them will know to cull them.
-When the client does its generic poll for neighbors, the server does the following:
-    - Asks: where is the client, approximately?
-    - Looks up all players with nearby approximate locations in the world dict (i.e. same map header, or else within the 3x3 grid of neighboring chunks in the overworld).
-        - These get compiled into a dict indexed by id.
-    - Checks the list of tombstones. Any players here, and not in the already-compiled dict, get put into a separate dict of "goners" marked for cleanup.
-    - Both are passed to the client through the dll. The client will then update any visible neighbors, rendering appropriate animations for movement as necessary, and delete any neighbors marked for cleanup.
-
-Every 5 seconds, the server will iterate through the players list and check the timestamps in private_states. Any players who have not communicated within TIMEOUT_TIMER ms will be removed from the player list. their approximate location will be grabbed from the 
-private info, used to find them in the world, and they'll be removed there as well. then, their private info will be deleted, and a tombstone will be placed at their approximate location.
-
-All tombstones are created with a timestamp. When the server sweeps the player list, it will FIRST sweep through tombstones and delete any tombstones more than TIMEOUT_TIMER ms old. This ought to be sufficient -- any player who hasnt seen the tombstone within
-that timer is about to be culled anyway, and will need to reconnect and completely rebuild their list of neighbors from scratch.
-
-When a client moves chunks, or enters a new map, they'll communicate this to the server outside the usual polling rate. 
-    - In the overworld, the server will tell them all players in the 3 chunks that have left their 3x3 surroundings, and all players that have entered, for culling and adding.
-    - If they enter any non-overworld map, the server will just tell them all players in the map they've entered, and the client should know to fully clear their prior neighbor info and replace it with the new list of neighbors.
+Currently, I'm taking a websockets approach, where the server maintains a persistent connection to each client. This allows for real-time updates and reduces the overhead of establishing connections for each update.
+As well, since most people are stationary most of the time, this minimizes the amount of data sent -- players will only receive updates when something changes, rather than polling for updates at a fixed rate.
+Most of the logic has been greatly simplified and does not need much explaining. Suffice to say, player state is communicated when it changes to players in a 3x3 chunk area around the player. If the player's chunk changes, or if the player disconnects,
+the server will additionally send "kick" notifs to any affected players.
 """
 
 #TODO: when initializing, players need to be given a location, even if its just (0, 0, 0). so maybe check for location and if it exists, thats the location, if not, its (0, 0, 0).
@@ -41,7 +25,7 @@ import asyncio
 import websockets
 from websockets.http11 import Response
 from websockets.datastructures import Headers
-from pokedex import species, abilities, moves, items
+from pokedex import ENCODING, SPECIES, ABILITIES, MOVES, ITEMS
 
 MAX_PLAYERS = 1000
 TIMEOUT_TIMER = 5 #seconds
@@ -61,7 +45,15 @@ private_states = {}
 
 world = defaultdict(set) # dict of lists of player IDs indexed by tuples (map, chunk_x, chunk_z), where map = 0 if overworld, and the map header otherwise. chunk_x and chunk_y are optimizations for pruning display in the overworld, and are 0 if map != 0.
 
-gender = ["♂", "♀", "Ø", "Ø"]
+GENDER = ["♂", "♀", "Ø", "Ø"]
+
+def stringify(plat_string):
+    result = ""
+    for char in plat_string:
+        if char == 0xFFFF or char == 0x0000:
+            break
+        result += ENCODING.get(char, "?")
+    return result
 
 def get_chunk(player):
     map = player["map"]
@@ -204,7 +196,7 @@ def generate_admin_page():
                 continue
             response += f"""
                 <details style ="border: 1px solid black; padding: 5px;">
-                <summary>{key}: {plyr.get("name")}</summary>
+                <summary>{key}: {stringify(plyr.get("name"))}</summary>
                 <div>
                     Position: {plyr.get("billboard").get("pos")[0]/65536.0}, {plyr.get("billboard").get("pos")[1]/65536.0}, {plyr.get("billboard").get("pos")[2]/65536.0}<br>
                     Map: {plyr.get("map")}<br>
@@ -212,7 +204,7 @@ def generate_admin_page():
             party = plyr.get("party", [])
             for j, mon in enumerate(party):
                 mon_moves = mon.get("moves", [])
-                mon_moves = [moves[move] for move in mon_moves]
+                mon_moves = [MOVES[move] for move in mon_moves]
 
                 status = mon.get("status", 0)
                 status_str = []
@@ -234,15 +226,15 @@ def generate_admin_page():
                 
                 response += f"""
                     <details style ="border: 1px solid gray; padding: 5px; margin: 5px;">
-                    <summary>{mon.get("name")} the {species[mon.get("species")][mon.get("forme")]} {gender[mon.get("gender")]}</summary>
+                    <summary>{stringify(mon.get("name"))} the {SPECIES[mon.get("species")][mon.get("forme")]} {GENDER[mon.get("gender")]}</summary>
                     <div>
-                        Ability: {abilities[mon.get("ability")]}<br>
+                        Ability: {ABILITIES[mon.get("ability")]}<br>
                         Level: {mon.get("level")}<br>
                         Current HP: {mon.get("curr_hp")}/{mon.get("stats")[0]}<br>
                         Status: {" and ".join(status_str)}<br>
                         Stats: {mon.get("stats")}<br>
                         Moves: {mon_moves}<br>
-                        Held Item: {items[mon.get("held_item")]}<br>
+                        Held Item: {ITEMS[mon.get("held_item")]}<br>
                     </div>
                     </details>
                 """

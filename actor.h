@@ -9,7 +9,6 @@
 #define PARTY_DIFFERS 0b00000010
 
 #define FIELD(type, name) type name;
-#define FIELD_STRING(name, size) char name[size];
 #define FIELD_ARRAY(type, name, size) type name[size];
 #define FIELD_PADDING(size) char padding[size];
 
@@ -17,6 +16,7 @@
     FIELD(uint16_t, species); \
     FIELD_ARRAY(uint16_t, stats, 6); \
     FIELD_ARRAY(uint16_t, moves, 4); \
+    FIELD_ARRAY(uint16_t, name, 11); \
     FIELD(uint16_t, held_item); \
     FIELD(uint16_t, curr_hp); \
     FIELD(uint8_t, level); \
@@ -24,7 +24,7 @@
     FIELD(uint8_t, status); \
     FIELD(uint8_t, gender); \
     FIELD(uint8_t, ability); \
-    FIELD_STRING(name, 11);
+    FIELD_PADDING(1);
 
 #define BILLBOARD_FIELDS \
     FIELD_ARRAY(uint32_t, pos, 3); \
@@ -36,8 +36,9 @@
 #define ACTOR_FIELDS \
     FIELD(uint16_t, id); \
     FIELD(uint16_t, map); \
+    FIELD_ARRAY(uint16_t, name, 11); \
     FIELD(uint8_t, pronouns); \
-    FIELD_STRING(name, 11);
+    FIELD_PADDING(1);
 
 typedef struct Pokemon {
     POKEMON_FIELDS

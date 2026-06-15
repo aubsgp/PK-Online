@@ -29,7 +29,9 @@ void print_actor(Actor *actor){
         fprintf(log, "    gender: %d\n", actor->party[i].gender);
         fprintf(log, "    forme: %d\n", actor->party[i].forme);
         fprintf(log, "    ability: %d\n", actor->party[i].ability);
-        fprintf(log, "    name: %s\n", actor->party[i].name);
+        for(int j = 0; j < 11 && actor->name[j] != 0xFFFF && actor->name[j] != 0; j++)
+            fprintf(log, "%04x ", actor->name[j]);
+        fprintf(log, "\n");
         fprintf(log, "    level: %d\n", actor->party[i].level);
         fprintf(log, "    item: %d\n", actor->party[i].held_item);
         fprintf(log, "    curr_hp: %d\n", actor->party[i].curr_hp);

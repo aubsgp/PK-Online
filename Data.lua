@@ -1,7 +1,9 @@
 local secretary = require("TemporalSecretary")
+local FictionalDictionary = require("FictionalDictionary")
+local ENCODING = FictionalDictionary.ENCODING
 
 -- OOP wrapper for slurped in data processing. Allows definition of some basic functions and removes the need to handle 1-indexing math.
-Data = {}
+local Data = {}
 Data.__index = Data
 
 function Data:new(address, size) -- Because this is only to be used for processing of readbyterange, we want the constructor to idiot-proof creation of these objects and only operate in that narrow context.
@@ -72,6 +74,34 @@ function Data:writedwordrange(addr, dword_table)
     end
 end
 
+-- In Gen 4, strings encode as 16-bit sequences terminating in 0xFFFF. Note that the encoding is NOT UTF-16, but is instead specific to Pokemon.
+function Data:readstring(addr)
+    local ret = {}
+    for i = 0, 20, 2 do
+        local char = self:readword(addr + i)
+        if char == 0xFFFF then
+            break
+        end
+        table.insert(ret, char)
+    end
+    return ret
+end
+function Data.encode_string(data)
+    local str = ""
+    for _, char in ipairs(data) do
+        if char == 0xFFFF or char == 0 then
+            break
+        end
+        local character = ENCODING[char]
+        if string.byte(character) < 32 or string.byte(character) > 126 then
+            str = str .. "_"
+        else
+            str = str .. character
+        end
+    end
+    return str
+end
+
 function Data:write_to_memory(addr)
     local length = #self
     local length_dwords = math.floor(length/4)
@@ -83,31 +113,6 @@ function Data:write_to_memory(addr)
         local offset = i-1
         memory.writebyte(addr+offset, self:readbyte(offset))
     end
-end
-
--- In Gen 4, strings encode as 16-bit sequences terminating in 0xFFFF. Note that the encoding is NOT UTF-16, but is instead specific to Pokemon.
--- For now, I will only dedicate energy to handling alphanumeric characters, and will add handling for the rest later.
-function Data:readstring(addr)
-    local str = ""
-    for i = 0, 20, 2 do
-        local char = self:readword(addr + i)
-        if char == 0xFFFF then
-            break
-        else
-            if char >= 0x145 and char <= 0x15e then
-                char = char - 0x145 + string.byte("a")
-            elseif char >= 0x12b and char <= 0x144 then
-                char = char - 0x12b + string.byte("A")
-            elseif char >= 0x121 and char <= 0x12a then
-                char = char - 0x121 + string.byte("0")
-            else
-                char = string.byte("?")
-            end
-
-            str = str .. string.char(char)
-        end
-    end
-    return str
 end
 
 -- Decrypts the data in-place rather than returning a new table. Implementation of this and the next function is largely copied from Emi's versus link ersatz. See https://projectpokemon.org/home/docs/gen-4/pkm-structure-r65/ for further info.
@@ -139,3 +144,47 @@ function Data:checksum(addr, length)
 	end
 	return sum
 end
+
+function Data.deep_copy(orig, memo)
+    if type(orig) ~= "table" then 
+        return orig
+    end
+    memo = memo or {}
+    if memo[orig] then 
+        return memo[orig] 
+    end
+    local copy = {}
+    memo[orig] = copy
+    for k, v in pairs(orig) do
+        copy[Data.deep_copy(k, memo)] = Data.deep_copy(v, memo)
+    end
+    return setmetatable(copy, getmetatable(orig))
+end
+
+function Data.deep_compare(a, b, memo)
+    if a == b then return true end
+    if type(a) ~= type(b) or type(a) ~= "table" or getmetatable(a) ~= getmetatable(b) then 
+        return false 
+    end
+
+    memo = memo or {}
+    if memo[a] == b then 
+        return true 
+    end
+    memo[a] = b
+
+    for k, v in pairs(a) do
+        if not Data.deep_compare(v, b[k], memo) then 
+            return false 
+        end
+    end
+    for k, v in pairs(b) do
+        if a[k] == nil then 
+            return false 
+        end
+    end
+
+    return true
+end
+
+return Data

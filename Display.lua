@@ -1,7 +1,9 @@
-require("ObjectOrientationDay")
+local Data = require("Data")
+local ObjectOrientationDay = require("ObjectOrientationDay")
+local Pos = ObjectOrientationDay.Pos
 
 -- See https://github.com/pret/pokeplatinum/blob/main/include/camera.h
-Camera = {
+local Camera = {
     addr = 0,
 
     ANGLES_OFFSET = 0x00,
@@ -48,7 +50,7 @@ end
 
 ----------
 
-Obstructions = {-- list of rectangles defined by their upper-left and lower-right coordinates, representing areas where text cannot be displayed, i.e. in the case of open menus and such.
+local Obstructions = {-- list of rectangles defined by their upper-left and lower-right coordinates, representing areas where text cannot be displayed, i.e. in the case of open menus and such.
     addr = 0,
     menus = {
         bottom_screen = {
@@ -84,7 +86,7 @@ end
 
 ----------
 
-Text = { -- Object that represents a string of text to be displayed on the screen.
+local Text = { -- Object that represents a string of text to be displayed on the screen.
     LETTER_WIDTH = 6,
     LETTER_HEIGHT = 8,
 }
@@ -158,3 +160,9 @@ function Text:display(x, y) -- (x, y) optional if you want to be a bit lazy.
         gui.text(positions[index].x, positions[index].y, char)
     end
 end
+
+return {
+    Camera = Camera,
+    Obstructions = Obstructions,
+    Text = Text
+}

@@ -1,4 +1,4 @@
-species = [
+SPECIES = [
     ["None"],  # 0 - placeholder
     ["Bulbasaur"],  # 1
     ["Ivysaur"],  # 2
@@ -495,7 +495,7 @@ species = [
     ["Arceus"],  # 493
 ]
 
-abilities = [
+ABILITIES = [
 	"None", #0
 	"Stench", #1
 	"Drizzle", #2
@@ -622,7 +622,7 @@ abilities = [
 	"Bad Dreams", #123
 ]
 
-moves = [
+MOVES = [
     "None", #0
 	"Pound", #1
 	"Karate Chop", #2
@@ -1093,7 +1093,7 @@ moves = [
 	"Shadow Force", #467
 ]
 
-items = [
+ITEMS = [
 	"None", #0
 	"Master Ball", #1
 	"Ultra Ball", #2
@@ -1563,3 +1563,742 @@ items = [
 	"Gracidea", #466
 	"Secret Key", #467
 ]
+
+# xp_table[curve][level], level 1-100 (index 0 is unused padding)
+# 0=Erratic, 1=Fast, 2=Medium Fast, 3=Medium Slow, 4=Slow, 5=Fluctuating
+XP_TABLE = [
+    # 0: Erratic
+    [0, 0, 15, 52, 122, 237, 406, 637, 942, 1326, 1800, 2369, 3041, 3822, 4719,
+     5737, 6881, 8155, 9564, 11111, 12800, 14632, 16610, 18737, 21012, 23437,
+     26012, 28737, 31610, 34632, 37800, 41111, 44564, 48155, 51881, 55737,
+     59719, 63822, 68041, 72369, 76800, 81326, 85942, 90637, 95406, 100237,
+     105122, 110052, 115015, 120001, 125000, 131324, 137795, 144410, 151165,
+     158056, 165079, 172229, 179503, 186894, 194400, 202013, 209728, 217540,
+     225443, 233431, 241496, 249633, 257834, 267406, 276458, 286328, 296358,
+     305767, 316074, 326531, 336255, 346965, 357812, 367807, 378880, 390077,
+     400293, 411686, 423190, 433572, 445239, 457001, 467489, 479378, 491346,
+     501878, 513934, 526049, 536557, 548720, 560922, 571333, 583539, 591882,
+     600000],
+    # 1: Fast
+    [0, 0, 6, 21, 51, 100, 172, 274, 409, 583, 800, 1064, 1382, 1757, 2195,
+     2700, 3276, 3930, 4665, 5487, 6400, 7408, 8518, 9733, 11059, 12500,
+     14060, 15746, 17561, 19511, 21600, 23832, 26214, 28749, 31443, 34300,
+     37324, 40522, 43897, 47455, 51200, 55136, 59270, 63605, 68147, 72900,
+     77868, 83058, 88473, 94119, 100000, 106120, 112486, 119101, 125971,
+     133100, 140492, 148154, 156089, 164303, 172800, 181584, 190662, 200037,
+     209715, 219700, 229996, 240610, 251545, 262807, 274400, 286328, 298598,
+     311213, 324179, 337500, 351180, 365226, 379641, 394431, 409600, 425152,
+     441094, 457429, 474163, 491300, 508844, 526802, 545177, 563975, 583200,
+     602856, 622950, 643485, 664467, 685900, 707788, 730138, 752953, 776239,
+     800000],
+    # 2: Medium Fast
+    [0, 0, 8, 27, 64, 125, 216, 343, 512, 729, 1000, 1331, 1728, 2197, 2744,
+     3375, 4096, 4913, 5832, 6859, 8000, 9261, 10648, 12167, 13824, 15625,
+     17576, 19683, 21952, 24389, 27000, 29791, 32768, 35937, 39304, 42875,
+     46656, 50653, 54872, 59319, 64000, 68921, 74088, 79507, 85184, 91125,
+     97336, 103823, 110592, 117649, 125000, 132651, 140608, 148877, 157464,
+     166375, 175616, 185193, 195112, 205379, 216000, 226981, 238328, 250047,
+     262144, 274625, 287496, 300763, 314432, 328509, 343000, 357911, 373248,
+     389017, 405224, 421875, 438976, 456533, 474552, 493039, 512000, 531441,
+     551368, 571787, 592704, 614125, 636056, 658503, 681472, 704969, 729000,
+     753571, 778688, 804357, 830584, 857375, 884736, 912673, 941192, 970299,
+     1000000],
+    # 3: Medium Slow
+    [0, 0, 9, 57, 96, 135, 179, 236, 314, 419, 560, 742, 973, 1261, 1612,
+     2035, 2535, 3120, 3798, 4575, 5460, 6458, 7577, 8825, 10208, 11735,
+     13411, 15244, 17242, 19411, 21760, 24294, 27021, 29949, 33084, 36435,
+     40007, 43808, 47846, 52127, 56660, 61450, 66505, 71833, 77440, 83335,
+     89523, 96012, 102810, 109923, 117360, 125126, 133229, 141677, 150476,
+     159635, 169159, 179056, 189334, 199999, 211060, 222522, 234393, 246681,
+     259392, 272535, 286115, 300140, 314618, 329555, 344960, 360838, 377197,
+     394045, 411388, 429235, 447591, 466464, 485862, 505791, 526260, 547274,
+     568841, 590969, 613664, 636935, 660787, 685228, 710266, 735907, 762160,
+     789030, 816525, 844653, 873420, 902835, 932903, 963632, 995030, 1027103,
+     1059860],
+    # 4: Slow
+    [0, 0, 10, 33, 80, 156, 270, 428, 640, 911, 1250, 1663, 2160, 2746, 3430,
+     4218, 5120, 6141, 7290, 8573, 10000, 11576, 13310, 15208, 17280, 19531,
+     21970, 24603, 27440, 30486, 33750, 37238, 40960, 44921, 49130, 53593,
+     58320, 63316, 68590, 74148, 80000, 86151, 92610, 99383, 106480, 113906,
+     121670, 129778, 138240, 147061, 156250, 165813, 175760, 186096, 196830,
+     207968, 219520, 231491, 243890, 256723, 270000, 283726, 297910, 312558,
+     327680, 343281, 359370, 375953, 393040, 410636, 428750, 447388, 466560,
+     486271, 506530, 527343, 548720, 570666, 593190, 616298, 640000, 664301,
+     689210, 714733, 740880, 767656, 795070, 823128, 851840, 881211, 911250,
+     941963, 973360, 1005446, 1038230, 1071718, 1105920, 1140841, 1176490,
+     1212873, 1250000],
+    # 5: Fluctuating
+    [0, 0, 4, 13, 32, 65, 112, 178, 276, 393, 540, 745, 967, 1230, 1591,
+     1957, 2457, 3046, 3732, 4526, 5440, 6482, 7666, 9003, 10506, 12187,
+     14060, 16140, 18439, 20974, 23760, 26811, 30146, 33780, 37731, 42017,
+     46656, 50653, 55969, 60505, 66560, 71677, 78533, 84277, 91998, 98415,
+     107069, 114205, 123863, 131766, 142500, 151222, 163105, 172697, 185807,
+     196322, 210739, 222231, 238036, 250562, 267840, 281456, 300293, 315059,
+     335544, 351520, 373744, 390991, 415050, 433631, 459620, 479600, 507617,
+     529063, 559209, 582187, 614566, 639146, 673863, 700115, 737280, 765275,
+     804997, 834809, 877201, 908905, 954084, 987754, 1035837, 1071552,
+     1122660, 1160499, 1214753, 1254796, 1312322, 1354652, 1415577, 1460276,
+     1524731, 1571884, 1640000]
+]
+
+XP_RATES = [
+	-1,	# 0: unused
+	3,	# 1: Bulbasaur, Medium Slow
+	3,	# 2: Ivysaur, Medium Slow
+	3,	# 3: Venusaur, Medium Slow
+	3,	# 4: Charmander, Medium Slow
+	3,	# 5: Charmeleon, Medium Slow
+	3,	# 6: Charizard, Medium Slow
+	3,	# 7: Squirtle, Medium Slow
+	3,	# 8: Wartortle, Medium Slow
+	3,	# 9: Blastoise, Medium Slow
+	2,	# 10: Caterpie, Medium Fast
+	2,	# 11: Metapod, Medium Fast
+	2,	# 12: Butterfree, Medium Fast
+	2,	# 13: Weedle, Medium Fast
+	2,	# 14: Kakuna, Medium Fast
+	2,	# 15: Beedrill, Medium Fast
+	3,	# 16: Pidgey, Medium Slow
+	3,	# 17: Pidgeotto, Medium Slow
+	3,	# 18: Pidgeot, Medium Slow
+	2,	# 19: Rattata, Medium Fast
+	2,	# 20: Raticate, Medium Fast
+	2,	# 21: Spearow, Medium Fast
+	2,	# 22: Fearow, Medium Fast
+	2,	# 23: Ekans, Medium Fast
+	2,	# 24: Arbok, Medium Fast
+	2,	# 25: Pikachu, Medium Fast
+	2,	# 26: Raichu, Medium Fast
+	2,	# 27: Sandshrew, Medium Fast
+	2,	# 28: Sandslash, Medium Fast
+	3,	# 29: Nidoran-F, Medium Slow
+	3,	# 30: Nidorina, Medium Slow
+	3,	# 31: Nidoqueen, Medium Slow
+	3,	# 32: Nidoran-M, Medium Slow
+	3,	# 33: Nidorino, Medium Slow
+	3,	# 34: Nidoking, Medium Slow
+	1,	# 35: Clefairy, Fast
+	1,	# 36: Clefable, Fast
+	2,	# 37: Vulpix, Medium Fast
+	2,	# 38: Ninetales, Medium Fast
+	1,	# 39: Jigglypuff, Fast
+	1,	# 40: Wigglytuff, Fast
+	2,	# 41: Zubat, Medium Fast
+	2,	# 42: Golbat, Medium Fast
+	3,	# 43: Oddish, Medium Slow
+	3,	# 44: Gloom, Medium Slow
+	3,	# 45: Vileplume, Medium Slow
+	2,	# 46: Paras, Medium Fast
+	2,	# 47: Parasect, Medium Fast
+	2,	# 48: Venonat, Medium Fast
+	2,	# 49: Venomoth, Medium Fast
+	2,	# 50: Diglett, Medium Fast
+	2,	# 51: Dugtrio, Medium Fast
+	2,	# 52: Meowth, Medium Fast
+	2,	# 53: Persian, Medium Fast
+	2,	# 54: Psyduck, Medium Fast
+	2,	# 55: Golduck, Medium Fast
+	2,	# 56: Mankey, Medium Fast
+	2,	# 57: Primeape, Medium Fast
+	4,	# 58: Growlithe, Slow
+	4,	# 59: Arcanine, Slow
+	3,	# 60: Poliwag, Medium Slow
+	3,	# 61: Poliwhirl, Medium Slow
+	3,	# 62: Poliwrath, Medium Slow
+	3,	# 63: Abra, Medium Slow
+	3,	# 64: Kadabra, Medium Slow
+	3,	# 65: Alakazam, Medium Slow
+	3,	# 66: Machop, Medium Slow
+	3,	# 67: Machoke, Medium Slow
+	3,	# 68: Machamp, Medium Slow
+	3,	# 69: Bellsprout, Medium Slow
+	3,	# 70: Weepinbell, Medium Slow
+	3,	# 71: Victreebel, Medium Slow
+	4,	# 72: Tentacool, Slow
+	4,	# 73: Tentacruel, Slow
+	3,	# 74: Geodude, Medium Slow
+	3,	# 75: Graveler, Medium Slow
+	3,	# 76: Golem, Medium Slow
+	2,	# 77: Ponyta, Medium Fast
+	2,	# 78: Rapidash, Medium Fast
+	2,	# 79: Slowpoke, Medium Fast
+	2,	# 80: Slowbro, Medium Fast
+	2,	# 81: Magnemite, Medium Fast
+	2,	# 82: Magneton, Medium Fast
+	2,	# 83: Farfetch'd, Medium Fast
+	2,	# 84: Doduo, Medium Fast
+	2,	# 85: Dodrio, Medium Fast
+	2,	# 86: Seel, Medium Fast
+	2,	# 87: Dewgong, Medium Fast
+	2,	# 88: Grimer, Medium Fast
+	2,	# 89: Muk, Medium Fast
+	4,	# 90: Shellder, Slow
+	4,	# 91: Cloyster, Slow
+	3,	# 92: Gastly, Medium Slow
+	3,	# 93: Haunter, Medium Slow
+	3,	# 94: Gengar, Medium Slow
+	2,	# 95: Onix, Medium Fast
+	2,	# 96: Drowzee, Medium Fast
+	2,	# 97: Hypno, Medium Fast
+	2,	# 98: Krabby, Medium Fast
+	2,	# 99: Kingler, Medium Fast
+	2,	# 100: Voltorb, Medium Fast
+	2,	# 101: Electrode, Medium Fast
+	4,	# 102: Exeggcute, Slow
+	4,	# 103: Exeggutor, Slow
+	2,	# 104: Cubone, Medium Fast
+	2,	# 105: Marowak, Medium Fast
+	2,	# 106: Hitmonlee, Medium Fast
+	2,	# 107: Hitmonchan, Medium Fast
+	2,	# 108: Lickitung, Medium Fast
+	2,	# 109: Koffing, Medium Fast
+	2,	# 110: Weezing, Medium Fast
+	4,	# 111: Rhyhorn, Slow
+	4,	# 112: Rhydon, Slow
+	1,	# 113: Chansey, Fast
+	2,	# 114: Tangela, Medium Fast
+	2,	# 115: Kangaskhan, Medium Fast
+	2,	# 116: Horsea, Medium Fast
+	2,	# 117: Seadra, Medium Fast
+	2,	# 118: Goldeen, Medium Fast
+	2,	# 119: Seaking, Medium Fast
+	4,	# 120: Staryu, Slow
+	4,	# 121: Starmie, Slow
+	2,	# 122: Mr. Mime, Medium Fast
+	2,	# 123: Scyther, Medium Fast
+	2,	# 124: Jynx, Medium Fast
+	2,	# 125: Electabuzz, Medium Fast
+	2,	# 126: Magmar, Medium Fast
+	4,	# 127: Pinsir, Slow
+	4,	# 128: Tauros, Slow
+	4,	# 129: Magikarp, Slow
+	4,	# 130: Gyarados, Slow
+	4,	# 131: Lapras, Slow
+	2,	# 132: Ditto, Medium Fast
+	2,	# 133: Eevee, Medium Fast
+	2,	# 134: Vaporeon, Medium Fast
+	2,	# 135: Jolteon, Medium Fast
+	2,	# 136: Flareon, Medium Fast
+	2,	# 137: Porygon, Medium Fast
+	2,	# 138: Omanyte, Medium Fast
+	2,	# 139: Omastar, Medium Fast
+	2,	# 140: Kabuto, Medium Fast
+	2,	# 141: Kabutops, Medium Fast
+	4,	# 142: Aerodactyl, Slow
+	4,	# 143: Snorlax, Slow
+	4,	# 144: Articuno, Slow
+	4,	# 145: Zapdos, Slow
+	4,	# 146: Moltres, Slow
+	4,	# 147: Dratini, Slow
+	4,	# 148: Dragonair, Slow
+	4,	# 149: Dragonite, Slow
+	4,	# 150: Mewtwo, Slow
+	3,	# 151: Mew, Medium Slow
+	3,	# 152: Chikorita, Medium Slow
+	3,	# 153: Bayleef, Medium Slow
+	3,	# 154: Meganium, Medium Slow
+	3,	# 155: Cyndaquil, Medium Slow
+	3,	# 156: Quilava, Medium Slow
+	3,	# 157: Typhlosion, Medium Slow
+	3,	# 158: Totodile, Medium Slow
+	3,	# 159: Croconaw, Medium Slow
+	3,	# 160: Feraligatr, Medium Slow
+	2,	# 161: Sentret, Medium Fast
+	2,	# 162: Furret, Medium Fast
+	2,	# 163: Hoothoot, Medium Fast
+	2,	# 164: Noctowl, Medium Fast
+	1,	# 165: Ledyba, Fast
+	1,	# 166: Ledian, Fast
+	1,	# 167: Spinarak, Fast
+	1,	# 168: Ariados, Fast
+	2,	# 169: Crobat, Medium Fast
+	4,	# 170: Chinchou, Slow
+	4,	# 171: Lanturn, Slow
+	2,	# 172: Pichu, Medium Fast
+	1,	# 173: Cleffa, Fast
+	1,	# 174: Igglybuff, Fast
+	1,	# 175: Togepi, Fast
+	1,	# 176: Togetic, Fast
+	2,	# 177: Natu, Medium Fast
+	2,	# 178: Xatu, Medium Fast
+	3,	# 179: Mareep, Medium Slow
+	3,	# 180: Flaaffy, Medium Slow
+	3,	# 181: Ampharos, Medium Slow
+	3,	# 182: Bellossom, Medium Slow
+	1,	# 183: Marill, Fast
+	1,	# 184: Azumarill, Fast
+	2,	# 185: Sudowoodo, Medium Fast
+	3,	# 186: Politoed, Medium Slow
+	3,	# 187: Hoppip, Medium Slow
+	3,	# 188: Skiploom, Medium Slow
+	3,	# 189: Jumpluff, Medium Slow
+	1,	# 190: Aipom, Fast
+	3,	# 191: Sunkern, Medium Slow
+	3,	# 192: Sunflora, Medium Slow
+	2,	# 193: Yanma, Medium Fast
+	2,	# 194: Wooper, Medium Fast
+	2,	# 195: Quagsire, Medium Fast
+	2,	# 196: Espeon, Medium Fast
+	2,	# 197: Umbreon, Medium Fast
+	3,	# 198: Murkrow, Medium Slow
+	2,	# 199: Slowking, Medium Fast
+	1,	# 200: Misdreavus, Fast
+	2,	# 201: Unown, Medium Fast
+	2,	# 202: Wobbuffet, Medium Fast
+	2,	# 203: Girafarig, Medium Fast
+	2,	# 204: Pineco, Medium Fast
+	2,	# 205: Forretress, Medium Fast
+	2,	# 206: Dunsparce, Medium Fast
+	3,	# 207: Gligar, Medium Slow
+	2,	# 208: Steelix, Medium Fast
+	1,	# 209: Snubbull, Fast
+	1,	# 210: Granbull, Fast
+	2,	# 211: Qwilfish, Medium Fast
+	2,	# 212: Scizor, Medium Fast
+	3,	# 213: Shuckle, Medium Slow
+	4,	# 214: Heracross, Slow
+	3,	# 215: Sneasel, Medium Slow
+	2,	# 216: Teddiursa, Medium Fast
+	2,	# 217: Ursaring, Medium Fast
+	2,	# 218: Slugma, Medium Fast
+	2,	# 219: Magcargo, Medium Fast
+	4,	# 220: Swinub, Slow
+	4,	# 221: Piloswine, Slow
+	1,	# 222: Corsola, Fast
+	2,	# 223: Remoraid, Medium Fast
+	2,	# 224: Octillery, Medium Fast
+	1,	# 225: Delibird, Fast
+	4,	# 226: Mantine, Slow
+	4,	# 227: Skarmory, Slow
+	4,	# 228: Houndour, Slow
+	4,	# 229: Houndoom, Slow
+	2,	# 230: Kingdra, Medium Fast
+	2,	# 231: Phanpy, Medium Fast
+	2,	# 232: Donphan, Medium Fast
+	2,	# 233: Porygon2, Medium Fast
+	4,	# 234: Stantler, Slow
+	1,	# 235: Smeargle, Fast
+	2,	# 236: Tyrogue, Medium Fast
+	2,	# 237: Hitmontop, Medium Fast
+	2,	# 238: Smoochum, Medium Fast
+	2,	# 239: Elekid, Medium Fast
+	2,	# 240: Magby, Medium Fast
+	4,	# 241: Miltank, Slow
+	1,	# 242: Blissey, Fast
+	4,	# 243: Raikou, Slow
+	4,	# 244: Entei, Slow
+	4,	# 245: Suicune, Slow
+	4,	# 246: Larvitar, Slow
+	4,	# 247: Pupitar, Slow
+	4,	# 248: Tyranitar, Slow
+	4,	# 249: Lugia, Slow
+	4,	# 250: Ho-Oh, Slow
+	3,	# 251: Celebi, Medium Slow
+	3,	# 252: Treecko, Medium Slow
+	3,	# 253: Grovyle, Medium Slow
+	3,	# 254: Sceptile, Medium Slow
+	3,	# 255: Torchic, Medium Slow
+	3,	# 256: Combusken, Medium Slow
+	3,	# 257: Blaziken, Medium Slow
+	3,	# 258: Mudkip, Medium Slow
+	3,	# 259: Marshtomp, Medium Slow
+	3,	# 260: Swampert, Medium Slow
+	2,	# 261: Poochyena, Medium Fast
+	2,	# 262: Mightyena, Medium Fast
+	2,	# 263: Zigzagoon, Medium Fast
+	2,	# 264: Linoone, Medium Fast
+	2,	# 265: Wurmple, Medium Fast
+	2,	# 266: Silcoon, Medium Fast
+	2,	# 267: Beautifly, Medium Fast
+	2,	# 268: Cascoon, Medium Fast
+	2,	# 269: Dustox, Medium Fast
+	3,	# 270: Lotad, Medium Slow
+	3,	# 271: Lombre, Medium Slow
+	3,	# 272: Ludicolo, Medium Slow
+	3,	# 273: Seedot, Medium Slow
+	3,	# 274: Nuzleaf, Medium Slow
+	3,	# 275: Shiftry, Medium Slow
+	3,	# 276: Taillow, Medium Slow
+	3,	# 277: Swellow, Medium Slow
+	2,	# 278: Wingull, Medium Fast
+	2,	# 279: Pelipper, Medium Fast
+	4,	# 280: Ralts, Slow
+	4,	# 281: Kirlia, Slow
+	4,	# 282: Gardevoir, Slow
+	2,	# 283: Surskit, Medium Fast
+	2,	# 284: Masquerain, Medium Fast
+	5,	# 285: Shroomish, Fluctuating
+	5,	# 286: Breloom, Fluctuating
+	4,	# 287: Slakoth, Slow
+	4,	# 288: Vigoroth, Slow
+	4,	# 289: Slaking, Slow
+	0,	# 290: Nincada, Erratic
+	0,	# 291: Ninjask, Erratic
+	0,	# 292: Shedinja, Erratic
+	3,	# 293: Whismur, Medium Slow
+	3,	# 294: Loudred, Medium Slow
+	3,	# 295: Exploud, Medium Slow
+	5,	# 296: Makuhita, Fluctuating
+	5,	# 297: Hariyama, Fluctuating
+	1,	# 298: Azurill, Fast
+	2,	# 299: Nosepass, Medium Fast
+	1,	# 300: Skitty, Fast
+	1,	# 301: Delcatty, Fast
+	3,	# 302: Sableye, Medium Slow
+	1,	# 303: Mawile, Fast
+	4,	# 304: Aron, Slow
+	4,	# 305: Lairon, Slow
+	4,	# 306: Aggron, Slow
+	2,	# 307: Meditite, Medium Fast
+	2,	# 308: Medicham, Medium Fast
+	4,	# 309: Electrike, Slow
+	4,	# 310: Manectric, Slow
+	2,	# 311: Plusle, Medium Fast
+	2,	# 312: Minun, Medium Fast
+	0,	# 313: Volbeat, Erratic
+	5,	# 314: Illumise, Fluctuating
+	3,	# 315: Roselia, Medium Slow
+	5,	# 316: Gulpin, Fluctuating
+	5,	# 317: Swalot, Fluctuating
+	4,	# 318: Carvanha, Slow
+	4,	# 319: Sharpedo, Slow
+	5,	# 320: Wailmer, Fluctuating
+	5,	# 321: Wailord, Fluctuating
+	2,	# 322: Numel, Medium Fast
+	2,	# 323: Camerupt, Medium Fast
+	2,	# 324: Torkoal, Medium Fast
+	1,	# 325: Spoink, Fast
+	1,	# 326: Grumpig, Fast
+	1,	# 327: Spinda, Fast
+	3,	# 328: Trapinch, Medium Slow
+	3,	# 329: Vibrava, Medium Slow
+	3,	# 330: Flygon, Medium Slow
+	3,	# 331: Cacnea, Medium Slow
+	3,	# 332: Cacturne, Medium Slow
+	0,	# 333: Swablu, Erratic
+	0,	# 334: Altaria, Erratic
+	0,	# 335: Zangoose, Erratic
+	5,	# 336: Seviper, Fluctuating
+	1,	# 337: Lunatone, Fast
+	1,	# 338: Solrock, Fast
+	2,	# 339: Barboach, Medium Fast
+	2,	# 340: Whiscash, Medium Fast
+	5,	# 341: Corphish, Fluctuating
+	5,	# 342: Crawdaunt, Fluctuating
+	2,	# 343: Baltoy, Medium Fast
+	2,	# 344: Claydol, Medium Fast
+	0,	# 345: Lileep, Erratic
+	0,	# 346: Cradily, Erratic
+	0,	# 347: Anorith, Erratic
+	0,	# 348: Armaldo, Erratic
+	0,	# 349: Feebas, Erratic
+	0,	# 350: Milotic, Erratic
+	2,	# 351: Castform, Medium Fast
+	3,	# 352: Kecleon, Medium Slow
+	1,	# 353: Shuppet, Fast
+	1,	# 354: Banette, Fast
+	1,	# 355: Duskull, Fast
+	1,	# 356: Dusclops, Fast
+	4,	# 357: Tropius, Slow
+	1,	# 358: Chimecho, Fast
+	3,	# 359: Absol, Medium Slow
+	2,	# 360: Wynaut, Medium Fast
+	2,	# 361: Snorunt, Medium Fast
+	2,	# 362: Glalie, Medium Fast
+	3,	# 363: Spheal, Medium Slow
+	3,	# 364: Sealeo, Medium Slow
+	3,	# 365: Walrein, Medium Slow
+	0,	# 366: Clamperl, Erratic
+	0,	# 367: Huntail, Erratic
+	0,	# 368: Gorebyss, Erratic
+	4,	# 369: Relicanth, Slow
+	1,	# 370: Luvdisc, Fast
+	4,	# 371: Bagon, Slow
+	4,	# 372: Shelgon, Slow
+	4,	# 373: Salamence, Slow
+	4,	# 374: Beldum, Slow
+	4,	# 375: Metang, Slow
+	4,	# 376: Metagross, Slow
+	4,	# 377: Regirock, Slow
+	4,	# 378: Regice, Slow
+	4,	# 379: Registeel, Slow
+	4,	# 380: Latias, Slow
+	4,	# 381: Latios, Slow
+	4,	# 382: Kyogre, Slow
+	4,	# 383: Groudon, Slow
+	4,	# 384: Rayquaza, Slow
+	4,	# 385: Jirachi, Slow
+	4,	# 386: Deoxys, Slow
+	3,	# 387: Turtwig, Medium Slow
+	3,	# 388: Grotle, Medium Slow
+	3,	# 389: Torterra, Medium Slow
+	3,	# 390: Chimchar, Medium Slow
+	3,	# 391: Monferno, Medium Slow
+	3,	# 392: Infernape, Medium Slow
+	3,	# 393: Piplup, Medium Slow
+	3,	# 394: Prinplup, Medium Slow
+	3,	# 395: Empoleon, Medium Slow
+	3,	# 396: Starly, Medium Slow
+	3,	# 397: Staravia, Medium Slow
+	3,	# 398: Staraptor, Medium Slow
+	2,	# 399: Bidoof, Medium Fast
+	2,	# 400: Bibarel, Medium Fast
+	3,	# 401: Kricketot, Medium Slow
+	3,	# 402: Kricketune, Medium Slow
+	3,	# 403: Shinx, Medium Slow
+	3,	# 404: Luxio, Medium Slow
+	3,	# 405: Luxray, Medium Slow
+	3,	# 406: Budew, Medium Slow
+	3,	# 407: Roserade, Medium Slow
+	0,	# 408: Cranidos, Erratic
+	0,	# 409: Rampardos, Erratic
+	0,	# 410: Shieldon, Erratic
+	0,	# 411: Bastiodon, Erratic
+	2,	# 412: Burmy, Medium Fast
+	2,	# 413: Wormadam, Medium Fast
+	2,	# 414: Mothim, Medium Fast
+	3,	# 415: Combee, Medium Slow
+	3,	# 416: Vespiquen, Medium Slow
+	2,	# 417: Pachirisu, Medium Fast
+	2,	# 418: Buizel, Medium Fast
+	2,	# 419: Floatzel, Medium Fast
+	2,	# 420: Cherubi, Medium Fast
+	2,	# 421: Cherrim, Medium Fast
+	2,	# 422: Shellos, Medium Fast
+	2,	# 423: Gastrodon, Medium Fast
+	1,	# 424: Ambipom, Fast
+	5,	# 425: Drifloon, Fluctuating
+	5,	# 426: Drifblim, Fluctuating
+	2,	# 427: Buneary, Medium Fast
+	2,	# 428: Lopunny, Medium Fast
+	1,	# 429: Mismagius, Fast
+	3,	# 430: Honchkrow, Medium Slow
+	1,	# 431: Glameow, Fast
+	1,	# 432: Purugly, Fast
+	1,	# 433: Chingling, Fast
+	2,	# 434: Stunky, Medium Fast
+	2,	# 435: Skuntank, Medium Fast
+	2,	# 436: Bronzor, Medium Fast
+	2,	# 437: Bronzong, Medium Fast
+	2,	# 438: Bonsly, Medium Fast
+	2,	# 439: Mime Jr., Medium Fast
+	1,	# 440: Happiny, Fast
+	3,	# 441: Chatot, Medium Slow
+	2,	# 442: Spiritomb, Medium Fast
+	4,	# 443: Gible, Slow
+	4,	# 444: Gabite, Slow
+	4,	# 445: Garchomp, Slow
+	4,	# 446: Munchlax, Slow
+	3,	# 447: Riolu, Medium Slow
+	3,	# 448: Lucario, Medium Slow
+	4,	# 449: Hippopotas, Slow
+	4,	# 450: Hippowdon, Slow
+	4,	# 451: Skorupi, Slow
+	4,	# 452: Drapion, Slow
+	2,	# 453: Croagunk, Medium Fast
+	2,	# 454: Toxicroak, Medium Fast
+	4,	# 455: Carnivine, Slow
+	0,	# 456: Finneon, Erratic
+	0,	# 457: Lumineon, Erratic
+	4,	# 458: Mantyke, Slow
+	4,	# 459: Snover, Slow
+	4,	# 460: Abomasnow, Slow
+	3,	# 461: Weavile, Medium Slow
+	2,	# 462: Magnezone, Medium Fast
+	2,	# 463: Lickilicky, Medium Fast
+	4,	# 464: Rhyperior, Slow
+	2,	# 465: Tangrowth, Medium Fast
+	2,	# 466: Electivire, Medium Fast
+	2,	# 467: Magmortar, Medium Fast
+	1,	# 468: Togekiss, Fast
+	2,	# 469: Yanmega, Medium Fast
+	2,	# 470: Leafeon, Medium Fast
+	2,	# 471: Glaceon, Medium Fast
+	3,	# 472: Gliscor, Medium Slow
+	4,	# 473: Mamoswine, Slow
+	2,	# 474: Porygon-Z, Medium Fast
+	4,	# 475: Gallade, Slow
+	2,	# 476: Probopass, Medium Fast
+	1,	# 477: Dusknoir, Fast
+	2,	# 478: Froslass, Medium Fast
+	2,	# 479: Rotom, Medium Fast
+	4,	# 480: Uxie, Slow
+	4,	# 481: Mesprit, Slow
+	4,	# 482: Azelf, Slow
+	4,	# 483: Dialga, Slow
+	4,	# 484: Palkia, Slow
+	4,	# 485: Heatran, Slow
+	4,	# 486: Regigigas, Slow
+	4,	# 487: Giratina, Slow
+	4,	# 488: Cresselia, Slow
+	4,	# 489: Phione, Slow
+	4,	# 490: Manaphy, Slow
+	4,	# 491: Darkrai, Slow
+	3,	# 492: Shaymin, Medium Slow
+	4,	# 493: Arceus, Slow
+]
+
+# Gen 4 Pokemon character encoding table.
+# Maps 2-byte encoded values to Unicode strings.
+# 0xFFFF is the string terminator; we handle this externally.
+# Pocket symbol entries 0x113-0x11A are omitted.
+ENCODING = {
+    0x001: "\u3000",
+
+    # Hiragana
+    0x002: "ぁ", 0x003: "あ", 0x004: "ぃ", 0x005: "い",
+    0x006: "ぅ", 0x007: "う", 0x008: "ぇ", 0x009: "え",
+    0x00A: "ぉ", 0x00B: "お", 0x00C: "か", 0x00D: "が",
+    0x00E: "き", 0x00F: "ぎ",
+    0x010: "く", 0x011: "ぐ", 0x012: "け", 0x013: "げ",
+    0x014: "こ", 0x015: "ご", 0x016: "さ", 0x017: "ざ",
+    0x018: "し", 0x019: "じ", 0x01A: "す", 0x01B: "ず",
+    0x01C: "せ", 0x01D: "ぜ", 0x01E: "そ", 0x01F: "ぞ",
+    0x020: "た", 0x021: "だ", 0x022: "ち", 0x023: "ぢ",
+    0x024: "っ", 0x025: "つ", 0x026: "づ", 0x027: "て",
+    0x028: "で", 0x029: "と", 0x02A: "ど", 0x02B: "な",
+    0x02C: "に", 0x02D: "ぬ", 0x02E: "ね", 0x02F: "の",
+    0x030: "は", 0x031: "ば", 0x032: "ぱ", 0x033: "ひ",
+    0x034: "び", 0x035: "ぴ", 0x036: "ふ", 0x037: "ぶ",
+    0x038: "ぷ", 0x039: "へ", 0x03A: "べ", 0x03B: "ぺ",
+    0x03C: "ほ", 0x03D: "ぼ", 0x03E: "ぽ", 0x03F: "ま",
+    0x040: "み", 0x041: "む", 0x042: "め", 0x043: "も",
+    0x044: "ゃ", 0x045: "や", 0x046: "ゅ", 0x047: "ゆ",
+    0x048: "ょ", 0x049: "よ", 0x04A: "ら", 0x04B: "り",
+    0x04C: "る", 0x04D: "れ", 0x04E: "ろ", 0x04F: "わ",
+    0x050: "を", 0x051: "ん",
+
+    # Katakana
+    0x052: "ァ", 0x053: "ア", 0x054: "ィ", 0x055: "イ",
+    0x056: "ゥ", 0x057: "ウ", 0x058: "ェ", 0x059: "エ",
+    0x05A: "ォ", 0x05B: "オ", 0x05C: "カ", 0x05D: "ガ",
+    0x05E: "キ", 0x05F: "ギ",
+    0x060: "ク", 0x061: "グ", 0x062: "ケ", 0x063: "ゲ",
+    0x064: "コ", 0x065: "ゴ", 0x066: "サ", 0x067: "ザ",
+    0x068: "シ", 0x069: "ジ", 0x06A: "ス", 0x06B: "ズ",
+    0x06C: "セ", 0x06D: "ゼ", 0x06E: "ソ", 0x06F: "ゾ",
+    0x070: "タ", 0x071: "ダ", 0x072: "チ", 0x073: "ヂ",
+    0x074: "ッ", 0x075: "ツ", 0x076: "ヅ", 0x077: "テ",
+    0x078: "デ", 0x079: "ト", 0x07A: "ド", 0x07B: "ナ",
+    0x07C: "ニ", 0x07D: "ヌ", 0x07E: "ネ", 0x07F: "ノ",
+    0x080: "ハ", 0x081: "バ", 0x082: "パ", 0x083: "ヒ",
+    0x084: "ビ", 0x085: "ピ", 0x086: "フ", 0x087: "ブ",
+    0x088: "プ", 0x089: "ヘ", 0x08A: "ベ", 0x08B: "ペ",
+    0x08C: "ホ", 0x08D: "ボ", 0x08E: "ポ", 0x08F: "マ",
+    0x090: "ミ", 0x091: "ム", 0x092: "メ", 0x093: "モ",
+    0x094: "ャ", 0x095: "ヤ", 0x096: "ュ", 0x097: "ユ",
+    0x098: "ョ", 0x099: "ヨ", 0x09A: "ラ", 0x09B: "リ",
+    0x09C: "ル", 0x09D: "レ", 0x09E: "ロ", 0x09F: "ワ",
+    0x0A0: "ヲ", 0x0A1: "ン",
+
+    # Fullwidth digits
+    0x0A2: "０", 0x0A3: "１", 0x0A4: "２", 0x0A5: "３",
+    0x0A6: "４", 0x0A7: "５", 0x0A8: "６", 0x0A9: "７",
+    0x0AA: "８", 0x0AB: "９",
+
+    # Fullwidth uppercase
+    0x0AC: "Ａ", 0x0AD: "Ｂ", 0x0AE: "Ｃ", 0x0AF: "Ｄ",
+    0x0B0: "Ｅ", 0x0B1: "Ｆ", 0x0B2: "Ｇ", 0x0B3: "Ｈ",
+    0x0B4: "Ｉ", 0x0B5: "Ｊ", 0x0B6: "Ｋ", 0x0B7: "Ｌ",
+    0x0B8: "Ｍ", 0x0B9: "Ｎ", 0x0BA: "Ｏ", 0x0BB: "Ｐ",
+    0x0BC: "Ｑ", 0x0BD: "Ｒ", 0x0BE: "Ｓ", 0x0BF: "Ｔ",
+    0x0C0: "Ｕ", 0x0C1: "Ｖ", 0x0C2: "Ｗ", 0x0C3: "Ｘ",
+    0x0C4: "Ｙ", 0x0C5: "Ｚ",
+
+    # Fullwidth lowercase
+    0x0C6: "ａ", 0x0C7: "ｂ", 0x0C8: "ｃ", 0x0C9: "ｄ",
+    0x0CA: "ｅ", 0x0CB: "ｆ", 0x0CC: "ｇ", 0x0CD: "ｈ",
+    0x0CE: "ｉ", 0x0CF: "ｊ", 0x0D0: "ｋ", 0x0D1: "ｌ",
+    0x0D2: "ｍ", 0x0D3: "ｎ", 0x0D4: "ｏ", 0x0D5: "ｐ",
+    0x0D6: "ｑ", 0x0D7: "ｒ", 0x0D8: "ｓ", 0x0D9: "ｔ",
+    0x0DA: "ｕ", 0x0DB: "ｖ", 0x0DC: "ｗ", 0x0DD: "ｘ",
+    0x0DE: "ｙ", 0x0DF: "ｚ",
+
+    # Punctuation and symbols (fullwidth/Japanese set)
+    0x0E1: "！", 0x0E2: "？", 0x0E3: "、", 0x0E4: "。",
+    0x0E5: "…", 0x0E6: "・", 0x0E7: "／", 0x0E8: "「",
+    0x0E9: "」", 0x0EA: "『", 0x0EB: "』", 0x0EC: "（",
+    0x0ED: "）", 0x0EE: "♂", 0x0EF: "♀",
+    0x0F0: "＋", 0x0F1: "ー", 0x0F2: "×", 0x0F3: "÷",
+    0x0F4: "＝", 0x0F5: "～", 0x0F6: "：", 0x0F7: "；",
+    0x0F8: "．", 0x0F9: "，", 0x0FA: "♠", 0x0FB: "♣",
+    0x0FC: "♥", 0x0FD: "♦", 0x0FE: "★", 0x0FF: "◎",
+
+    # More symbols
+    0x100: "○", 0x101: "□", 0x102: "△", 0x103: "◇",
+    0x104: "＠", 0x105: "♪", 0x106: "％",
+    0x107: "☀", 0x108: "☁", 0x109: "☂", 0x10A: "☃",
+    0x10B: "😑", 0x10C: "☺", 0x10D: "☹", 0x10E: "😠",
+    0x10F: "⤴",
+    0x110: "⤵", 0x111: "💤", 0x112: "円",
+    # 0x113-0x11A: pocket symbols, omitted
+    0x11B: "←", 0x11C: "↑", 0x11D: "↓", 0x11E: "→",
+    0x11F: "►",
+
+    # Half-width digits and letters (in-game "plain" ASCII equivalent)
+    0x120: "＆",
+    0x121: "0", 0x122: "1", 0x123: "2", 0x124: "3",
+    0x125: "4", 0x126: "5", 0x127: "6", 0x128: "7",
+    0x129: "8", 0x12A: "9",
+    0x12B: "A", 0x12C: "B", 0x12D: "C", 0x12E: "D",
+    0x12F: "E", 0x130: "F", 0x131: "G", 0x132: "H",
+    0x133: "I", 0x134: "J", 0x135: "K", 0x136: "L",
+    0x137: "M", 0x138: "N", 0x139: "O", 0x13A: "P",
+    0x13B: "Q", 0x13C: "R", 0x13D: "S", 0x13E: "T",
+    0x13F: "U", 0x140: "V", 0x141: "W", 0x142: "X",
+    0x143: "Y", 0x144: "Z",
+    0x145: "a", 0x146: "b", 0x147: "c", 0x148: "d",
+    0x149: "e", 0x14A: "f", 0x14B: "g", 0x14C: "h",
+    0x14D: "i", 0x14E: "j", 0x14F: "k", 0x150: "l",
+    0x151: "m", 0x152: "n", 0x153: "o", 0x154: "p",
+    0x155: "q", 0x156: "r", 0x157: "s", 0x158: "t",
+    0x159: "u", 0x15A: "v", 0x15B: "w", 0x15C: "x",
+    0x15D: "y", 0x15E: "z",
+
+    # Extended Latin
+    0x15F: "À",
+    0x160: "Á", 0x161: "Â", 0x162: "Ã", 0x163: "Ä",
+    0x164: "Å", 0x165: "Æ", 0x166: "Ç", 0x167: "È",
+    0x168: "É", 0x169: "Ê", 0x16A: "Ë", 0x16B: "Ì",
+    0x16C: "Í", 0x16D: "Î", 0x16E: "Ï", 0x16F: "Ð",
+    0x170: "Ñ", 0x171: "Ò", 0x172: "Ó", 0x173: "Ô",
+    0x174: "Õ", 0x175: "Ö", 0x176: "×", 0x177: "Ø",
+    0x178: "Ù", 0x179: "Ú", 0x17A: "Û", 0x17B: "Ü",
+    0x17C: "Ý", 0x17D: "Þ", 0x17E: "ß", 0x17F: "à",
+    0x180: "á", 0x181: "â", 0x182: "ã", 0x183: "ä",
+    0x184: "å", 0x185: "æ", 0x186: "ç", 0x187: "è",
+    0x188: "é", 0x189: "ê", 0x18A: "ë", 0x18B: "ì",
+    0x18C: "í", 0x18D: "î", 0x18E: "ï", 0x18F: "ð",
+    0x190: "ñ", 0x191: "ò", 0x192: "ó", 0x193: "ô",
+    0x194: "õ", 0x195: "ö", 0x196: "÷", 0x197: "ø",
+    0x198: "ù", 0x199: "ú", 0x19A: "û", 0x19B: "ü",
+    0x19C: "ý", 0x19D: "þ", 0x19E: "ÿ", 0x19F: "Œ",
+    0x1A0: "œ", 0x1A1: "Ş", 0x1A2: "ş", 0x1A3: "ª",
+    0x1A4: "º", 0x1A5: "er", 0x1A6: "re", 0x1A7: "r",
+    0x1A8: "$",  # Pokemon Dollar; no standard Unicode equivalent
+    0x1A9: "¡", 0x1AA: "¿", 0x1AB: "!", 0x1AC: "?",
+    0x1AD: ",", 0x1AE: ".", 0x1AF: "…",
+
+    # Punctuation (half-width/ASCII set)
+    0x1B0: "･", 0x1B1: "/",
+    0x1B2: "\u2018", 0x1B3: "\u2019", 0x1B4: "\u201C", 0x1B5: "\u201D",
+    0x1B6: "„", 0x1B7: "«", 0x1B8: "»",
+    0x1B9: "(", 0x1BA: ")",
+    0x1BB: "♂", 0x1BC: "♀",
+    0x1BD: "+", 0x1BE: "-", 0x1BF: "*",
+    0x1C0: "#", 0x1C1: "=", 0x1C2: "&", 0x1C3: "~",
+    0x1C4: ":", 0x1C5: ";",
+    0x1C6: "♠", 0x1C7: "♣", 0x1C8: "♥", 0x1C9: "♦",
+    0x1CA: "★", 0x1CB: "◎", 0x1CC: "○", 0x1CD: "□",
+    0x1CE: "△", 0x1CF: "◇",
+    0x1D0: "@", 0x1D1: "♪", 0x1D2: "%",
+    0x1D3: "☀", 0x1D4: "☁", 0x1D5: "☂", 0x1D6: "☃",
+    0x1D7: "😑", 0x1D8: "☺", 0x1D9: "☹", 0x1DA: "😠",
+    0x1DB: "⤴", 0x1DC: "⤵", 0x1DD: "💤",
+    0x1DF: "e",
+
+    # Special glyphs
+    0x1E0: "PK", 0x1E1: "MN",
+    0x1E8: "°", 0x1E9: "_", 0x1EA: "＿",
+    0x1EB: "․", 0x1EC: "‥",
+}

@@ -1,13 +1,13 @@
 local secretary = require("TemporalSecretary")
-require("Data")
-require("SpriteData")
-
+local Data = require("Data")
+local SpriteData = require("SpriteData")
+local VRAM = SpriteData.VRAM
 
 ----------
 
 -- Coordinates as Fx32 (fixed point 32-bit) values. 1 bit for the sign, then 19 bits for the integer portion, then 12 decimal bits. Graphics coordinates use these in the game's engine.
 -- Note that each tile is 16 (=2^4) pixels.
-Pos = {
+local Pos = {
     Fx32_ONE = 0x00001000,
 }
 Pos.__index = Pos
@@ -81,7 +81,7 @@ end
 -- Billboards are, somewhat simplifying, the 3d objects which are generated from 2d objects, angled towards the camera. The game generates one for each map object (which represent trainers, cut trees, etc), and the billboards are what actually gets fed
 -- into the graphics pipeline. They are tracked via linked list format. The size of a single billboard is 0xC4 (=196) bytes.
 -- See https://github.com/pret/pokeplatinum/blob/main/include/billboard.h#L22.
-Billboard = {
+local Billboard = {
     POS_OFFSET = 0x00,
     CALLBACK_OFFSET = 0x18,
     DRAW_OFFSET = 0x24,
@@ -146,13 +146,39 @@ function Billboard:update_from_memory()
     self.anim_frame = update.anim_frame
 end
 
+function Billboard.trace_loop(billboard_addr) -- Makes sure that the linked list of billboards loops back on itself properly.
+    local curr = billboard_addr
+    while true do
+        local next = memory.readdword(curr + Billboard.NEXT_OFFSET)
+        local next_prev = memory.readdword(next + Billboard.PREV_OFFSET)
+        if next == billboard_addr then
+            return true
+        else
+            if next_prev ~= curr or next < 0x02200000 or next >= 0x02400000 then -- Together these two checks should prevent this from running forever. 
+                return false
+            end
+            curr = next
+        end
+    end
+end
+
+function Billboard.sanity_check(addr) -- May add more checks later, i.e. checking that the pointer fields look right, that the texkey/plttkey look correct, etc.
+    if addr < 0x02200000 or addr >= 0x02400000 then
+        return false
+    end
+    if not Billboard.trace_loop(addr) then
+        return false
+    end
+    return true
+end
+
 function Billboard:flesh_forward() -- Finds next billboard in the game's linked list and sets up an object to track it. Returns nil if there is no next billboard, or if we already have a "next billboard" object.
     if self.next then
         return self.next
     end
 
     local next_addr = memory.readdword(self.addr + Billboard.NEXT_OFFSET)
-    if next_addr < 0x02200000 or next_addr > 0x02400000 then -- Very basic sanity check.
+    if next_addr < 0x02200000 or next_addr >= 0x02400000 then -- Very basic sanity check.
         print("Warning: next billboard address out of bounds: " .. string.format("0x%x", next_addr))
         return nil
     end
@@ -169,7 +195,7 @@ function Billboard:flesh_back() -- Finds previous billboard in the game's linked
     end
 
     local prev_addr = memory.readdword(self.addr + Billboard.PREV_OFFSET)
-    if prev_addr < 0x02200000 or prev_addr > 0x02400000 then -- Very basic sanity check.
+    if prev_addr < 0x02200000 or prev_addr >= 0x02400000 then -- Very basic sanity check.
         print("Warning: previous billboard address out of bounds: " .. string.format("0x%x", prev_addr))
         return nil
     end
@@ -178,22 +204,6 @@ function Billboard:flesh_back() -- Finds previous billboard in the game's linked
     self.prev.next = self
 
     return self.prev
-end
-
-function Billboard.trace_loop(billboard_addr) -- Makes sure that the linked list of billboards loops back on itself properly.
-    local curr = billboard_addr
-    while true do
-        local next = memory.readdword(curr + Billboard.NEXT_OFFSET)
-        if next == billboard_addr then
-            return true
-        else
-            if next < 0x02200000 or next > 0x02400000 then
-                print("Warning: billboard address out of bounds during loop trace: " .. string.format("0x%x", next))
-                return false
-            end
-            curr = next
-        end
-    end
 end
 
 function Billboard:set_next(next_billboard)
@@ -302,7 +312,7 @@ end
 
 ----------
 
-BillboardList = {
+local BillboardList = {
     addr = 0,
     billboards = {}, -- Excludes the head and tail.
     head = {}, -- First billboard, doesn't track an actual player but exists as a reference point to attach the list into the game's list. 
@@ -345,7 +355,7 @@ end
 ----------
 
 -- The info we care about for a given Pokemon.
-Pokemon = {
+local Pokemon = {
     party_addr = 0,
     battle_addr = 0,
     unshuffle_table = {
@@ -372,7 +382,7 @@ Pokemon = {
         {3,2,4,1},
         {4,2,3,1},
         {3,4,2,1},
-        {4,3,2,1},
+        {4,3,2,1}
     },
     -- We have some constants here defined for the sake of sanity checks for data integrity, since the game messes with Pokemon memory a lot.
     MAX_LEVEL = 100,
@@ -390,7 +400,7 @@ function Pokemon:new(species, forme, gender, ability,name, level, stats, moves, 
     instance.forme = forme or 0
     instance.gender = gender or 4
     instance.ability = ability or 1
-    instance.name = name or ""
+    instance.name = name or {}
     instance.level = level or 1
     instance.stats = stats or {0, 0, 0, 0, 0, 0}
     instance.moves = moves or {0, 0, 0, 0}
@@ -398,6 +408,10 @@ function Pokemon:new(species, forme, gender, ability,name, level, stats, moves, 
     instance.curr_hp = curr_hp or 0
     instance.status = status or 0
     return instance
+end
+
+function Pokemon:copy()
+    return Data.deep_copy(self)
 end
 
 function Pokemon:sanity_check()
@@ -511,7 +525,7 @@ function Pokemon.from_battle_memory(index)
         moves[i] = mon_data:readword(offset)
     end
 
-    local ret = Pokemon:new(species, forme, gender, ability,name, level, stats, moves, held_item, curr_hp, status)
+    local ret = Pokemon:new(species, forme, gender, ability, name, level, stats, moves, held_item, curr_hp, status)
     if not ret:sanity_check() then
         return false
     end
@@ -523,7 +537,7 @@ end
 -- Map Objects are how the game tracks other trainers, or interactible world objects such as cut trees or rock smash rocks. Actors should very roughly correspond to the trainer map objects.
 -- The struct is 0x128 (=296) bytes long. Party info is stored elsewhere, but for our purposes we want them here, so don't expect the notion of an Actor in this script to map totally cleanly onto the notion of a Map Object.
 -- See https://github.com/pret/pokeplatinum/blob/main/src/map_object.c#L40
-Actor = {
+local Actor = {
     MAP_OFFSET = 0x0C,
     DIR_OFFSET = 0x28,
     POS_OFFSET = 0x70,
@@ -534,7 +548,7 @@ Actor.__index = Actor
 function Actor:new(id, name, pronouns, map, is_moving, party, billboard)
     local instance = setmetatable({}, self)
     instance.id = id or 0
-    instance.name = name or ""
+    instance.name = name or {}
     instance.pronouns = pronouns or 0
     instance.map = map or 0 -- route, except we set it to 0 if its the overworld.
     instance.route = map or 0
@@ -542,6 +556,10 @@ function Actor:new(id, name, pronouns, map, is_moving, party, billboard)
     instance.party = party or {}
     instance.billboard = billboard or nil
     return instance
+end
+
+function Actor:copy()
+    return Data.deep_copy(self)
 end
 
 function Actor.wrap(raw) -- converts the raw table returned by the secretary to an Actor metatable
@@ -560,7 +578,7 @@ end
 
 ----------
 
-ActorManager = { -- Star of the show
+local ActorManager = { -- Star of the show
     addr = 0,
     player_addr = 0,
     player = Actor:new(),
@@ -640,6 +658,7 @@ function ActorManager.show_billboard_list()
     local snip_end = ActorManager.player.billboard.next
 
     if snip_end ~= ActorManager.BillboardList.head then
+        print("Inserting billboard list.")
         ActorManager.BillboardList.head:set_prev(snip_start)
         snip_start:set_next(ActorManager.BillboardList.head)
 
@@ -686,3 +705,12 @@ function ActorManager.player_looking_at()
 
     return ret
 end
+
+return {
+    Pos = Pos,
+    Billboard = Billboard,
+    BillboardList = BillboardList,
+    Actor = Actor,
+    Pokemon = Pokemon,
+    ActorManager = ActorManager
+}

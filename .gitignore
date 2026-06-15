@@ -15,7 +15,11 @@ debug.log
 
 # Python Scripts for Processing Files
 process_dump.py
+process_spritesheet.py
 rewrite.py
+
+# Save files
+savs/
 
 # Other
 pokeplat/
@@ -29,3 +33,4 @@ bugs.txt
 illuminate.lua
 MemorySafetySurvey.lua
 TODO.txt
+save_edit.py

@@ -183,7 +183,7 @@ DWORD WINAPI send_thread_func(LPVOID _){
 
 DWORD WINAPI receive_thread_func(LPVOID _){
     DWORD buffer_size = 128 * 1024; // 128 kb should be more than enough for 100 neighbors and their parties, but we can increase this if needed.
-    char *buffer = (char *)malloc(buffer_size);
+    char *buffer = (char *)malloc(buffer_size + 1);
     if(!buffer){
         fatal_error = true;
         return 1;
@@ -209,6 +209,10 @@ DWORD WINAPI receive_thread_func(LPVOID _){
         }
         buffer[bytes_read] = '\0';
         cJSON *update_obj = cJSON_Parse(buffer);
+        if(update_obj == NULL){
+            error_log("In receive_thread_func: Failed to parse websocket message");
+            continue;
+        }
 
         cJSON *keep_obj = cJSON_GetObjectItem(update_obj, "keep");
         cJSON *kick_obj = cJSON_GetObjectItem(update_obj, "kick");
@@ -302,7 +306,7 @@ static int HANDSHAKE(lua_State *L){
         return luaL_error(L, "Failed to open HTTP session handle.");
     }
 
-    connection = WinHttpConnect(session, L"192.168.0.6", 6868, 0);
+    connection = WinHttpConnect(session, L"pkonlinebeta.ddns.net", 6868, 0);
     if(connection == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP connection handle\n");
         WinHttpCloseHandle(session);
@@ -343,7 +347,7 @@ static int HANDSHAKE(lua_State *L){
     char response[64];
     DWORD bytes_read;
     WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
-    DWORD result = WinHttpWebSocketReceive(websocket, response, sizeof(response), &bytes_read, &type);
+    DWORD result = WinHttpWebSocketReceive(websocket, response, sizeof(response)-1, &bytes_read, &type);
     if (result != ERROR_SUCCESS){
         WinHttpCloseHandle(websocket);
         error_log("In HANDSHAKE: Failed to receive websocket response");
@@ -351,6 +355,11 @@ static int HANDSHAKE(lua_State *L){
     }
     response[bytes_read] = '\0';
     cJSON *response_obj = cJSON_Parse(response);
+    if(response_obj == NULL){
+        WinHttpCloseHandle(websocket);
+        error_log("In HANDSHAKE: Failed to parse websocket response");
+        return luaL_error(L, "Failed to parse websocket response.");
+    }
     player.id = cJSON_GetObjectItem(response_obj, "id")->valueint;
     token = (unsigned int)cJSON_GetObjectItem(response_obj, "token")->valuedouble;
     cJSON_Delete(response_obj);
@@ -412,7 +421,7 @@ static int get_neighbors(lua_State *L){
         if(temp_delta[i] == 1){
             actor_to_lua(&temp_neighbors[i], L); // RT, UT, KT, actor_table
             lua_pushinteger(L, i); // RT, UT, KT, actor_table, (local) id.
-            lua_setfield(L, -3, "id");  // RT, UT, KT, actor_table <- (local) id added, overwriting field "id"
+            lua_setfield(L, -2, "id");  // RT, UT, KT, actor_table <- (local) id added, overwriting field "id"
             lua_rawseti(L, -3, update_index++); // RT, UT <- actor added at field "update" with index update_index, KT
         }else if(temp_delta[i] == -1){
             lua_pushinteger(L, i); // RT, UT, KT, (local) id.
@@ -454,10 +463,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved){
             WaitForSingleObject(send_thread, 2000);
             CloseHandle(send_thread);
 
-            WaitForSingleObject(receive_thread, 2000);
+            WinHttpWebSocketClose(websocket, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, NULL, 0); // moved up
+            WaitForSingleObject(receive_thread, 2000); // now has a reason to exit
             CloseHandle(receive_thread);
 
-            WinHttpWebSocketClose(websocket, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, NULL, 0);
             WinHttpCloseHandle(websocket);
 
             if(connection != NULL){
