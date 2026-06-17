@@ -24,12 +24,7 @@ local Obstructions = Display.Obstructions
 local Text = Display.Text
 
 local FictionalDictionary = require("FictionalDictionary")
-local PRONOUNS = FictionalDictionary.PRONOUNS
 local OVERWORLD = FictionalDictionary.OVERWORLD
-local SPECIES = FictionalDictionary.SPECIES
-local MOVES = FictionalDictionary.MOVES
-local ABILITIES = FictionalDictionary.ABILITIES
-local ITEMS = FictionalDictionary.ITEMS
 
 local GDStrings = require("GDStrings")
 local menu_sprites = GDStrings.menu_sprites
@@ -40,8 +35,6 @@ local status_sprites = GDStrings.status_sprites
 
 local mem_base_pointer = memory.readdword(0x2000BA8) + 0x20 -- Although we do a read here, this value should always be fixed across sessions. The read is primarily for future-proofing against the script being ported to other romhacks.
 local mem_base = nil
-local save_counter_addr = nil
-local num_saves = nil
 local battlesystem_addr = nil
 local battlecontext_addr = nil
 local prev_billboard_addr = nil
@@ -53,7 +46,6 @@ ActorManager.player = player
 local timer = 1 -- Timer used for deferred function calls. Setting it amounts to saying "pause the script for this many frames, then run whatever our deferred_function is."" -1 means script is unpaused.
 local frame_counter = 0
 local in_battle = false
-local in_pc_box = false
 local done_wait = false
 local corruption_detected = false
 local player_billboard_changed = false
@@ -150,9 +142,9 @@ end
 -- We now set up the billboards for the player and all the potential neighbors.
 -- First, we need to grab the player billboard. We won't proceed until we have done so.
 local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-if not Billboard.sanity_check(player_billboard_addr) then
+if not player_billboard_addr or not Billboard.sanity_check(player_billboard_addr) then
     print("Waiting for valid player billboard address...")
-    while not Billboard.sanity_check(player_billboard_addr) do
+    while not player_billboard_addr or not Billboard.sanity_check(player_billboard_addr) do
         emu.frameadvance()
         player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
     end
@@ -160,30 +152,34 @@ if not Billboard.sanity_check(player_billboard_addr) then
 end
 player.billboard = Billboard.from_memory(player_billboard_addr)
 BillboardList.addr = memory.readdword(player_billboard_addr + 0x28)
+BillboardList.billboards[player_billboard_addr] = player.billboard
 
 -- Set the template for all neighbor billboards.
-local billboard_template = Data:new(ActorManager.player.billboard.addr + Billboard.SIZE, Billboard.SIZE) 
+local billboard_template = Data:new(ActorManager.player.billboard.addr, Billboard.NEXT_OFFSET) -- We don't want to copy the next or previous billboard addresses. 
 billboard_template:writedwordrange(Billboard.POS_OFFSET, {0, 0, 0})
 BillboardList.update_template(billboard_template)
 
 -- Fixed "anchor" billboards make insertion and removal of the whole neighbor billboard list very painless.
+BillboardList.sentinel = Billboard:new(BillboardList.addr + 0x0c)
+BillboardList.billboards[BillboardList.sentinel.addr] = BillboardList.sentinel
+
 BillboardList.head = Billboard.from_memory(Billboard.scratch_base)
+BillboardList.billboards[BillboardList.head.addr] = BillboardList.head
+
 BillboardList.tail = Billboard.from_memory(Billboard.scratch_base + 101*Billboard.SIZE)
+BillboardList.billboards[BillboardList.tail.addr] = BillboardList.tail
+
 BillboardList.head:set_next(BillboardList.tail)
 BillboardList.tail:set_prev(BillboardList.head)
 
 local function billboard_setup()
     local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-    if not sanity_check(player_billboard_addr) then
+    if not Billboard.sanity_check(player_billboard_addr) then
         timer = 1
         return
     end
     local x_coord = memory.readdword(player_billboard_addr + Billboard.POS_OFFSET)
     if x_coord == 0 then
-        timer = 1
-        return
-    end
-    if not Billboard.trace_loop(player_billboard_addr) then
         timer = 1
         return
     end
@@ -193,8 +189,8 @@ local function billboard_setup()
         return
     end
     print("Setting up billboards with player billboard address: " .. string.format("0x%x", player_billboard_addr))
+    BillboardList.update_from_memory()
     ActorManager.update_billboard_list()
-    timer = -1
     done_wait = false
 end
 while timer >= 0 do
@@ -207,10 +203,7 @@ end
 
 -- The game checks if the billboard list is active only when its about to delete it. So we watch for that and hide our insertions whenever that happens to prevent corruption curing cleanup.
 memory.registerread(BillboardList.addr, 1, function()
-    if player.billboard.addr == 0 and (BillboardList.head.prev or BillboardList.tail.next) then
-        error("WARNING NIGHTMARE NIGHTMARE NIGHTMARE")
-    end
-    ActorManager.hide_billboard_list()
+    BillboardList.hide()
 end)
 
 ----------
@@ -267,8 +260,67 @@ local function in_battle_update()
 end
 
 local function overworld_update()
-    -- Update graphical info.
-    update_name()
+    player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
+    if not player_billboard_addr or player_billboard_addr == 0 then
+        if not player_billboard_changed then
+            prev_billboard_addr = player.billboard.addr
+            player_billboard_changed = true
+            player.billboard.addr = 0
+        end
+        return
+    else
+        if player_billboard_changed then
+            player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
+            if not player_billboard_addr then
+                return
+            end
+            player_billboard_changed = false
+            player.billboard.addr = player_billboard_addr
+            if player.billboard.addr ~= prev_billboard_addr then
+                print(string.format("Player billboard address changed from 0x%x to 0x%x", prev_billboard_addr, player.billboard.addr))
+                if prev_billboard_addr then
+                    BillboardList.billboards[prev_billboard_addr] = nil
+                    BillboardList.billboards[player_billboard_addr] = player.billboard
+                    prev_billboard_addr = nil
+                    deferred_function = billboard_setup
+                    timer = 40
+                end
+            end
+            return
+        end
+        if BillboardList.billboards[player_billboard_addr] then
+            player.billboard = BillboardList.billboards[player_billboard_addr]
+        else
+            player.billboard = Billboard.from_memory(player_billboard_addr)
+            BillboardList.billboards[player_billboard_addr] = player.billboard
+        end
+    end
+    BillboardList.update_from_memory()
+    BillboardList.move_to_end()
+
+    local color = 1
+    local name = Data.encode_string(player.name)
+    if name == "Kya" then
+        color = 4 -- Pink
+    elseif name == "Flygon" or name == "pChal" then
+        color = 3 -- Blue (close enough to Purple)
+    elseif name == "Nak0lai" then
+        color = 5 -- Green
+    elseif name == "Fuslie" then
+        color = 2 -- Yellow
+    elseif name == "Drayano" then
+        color = 7 -- Pink
+    elseif name == "Squerk" then
+        color = 10 -- Brown
+    elseif name == "Tonks" or name == "Angel" or name == "Buhrito" then
+        color = 9 -- Greyscale, works for both Grey and Black
+    end
+    if color ~= 1 then
+        local _, plttkey = VRAM.get_sprite_keys(player.billboard.sprite, color)
+        memory.writedword(player.billboard.addr + Billboard.PLTTKEY_OFFSET, plttkey)
+    end
+
+    -- Update misc info.
     Camera.update_from_memory()
     Obstructions.update_from_memory()
     local map = memory.readdword(mem_base + 0x1294)
@@ -277,42 +329,7 @@ local function overworld_update()
     else
         player.map = map
     end
-
-    -- Keep an eye on the Player's Billboard struct to make sure it hasn't recently changed, i.e. getting on a bike or using the poketch.
-    local billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-    if billboard_addr == 0 then
-        if not player_billboard_changed then
-            prev_billboard_addr = player.billboard.addr
-            player.billboard.addr = billboard_addr
-            player_billboard_changed = true
-            return
-        end
-    else
-        player.billboard.addr = billboard_addr
-        player.billboard:update_from_memory()
-        if player_billboard_changed then
-            if Billboard.trace_loop(player.billboard.addr) then
-                player_billboard_changed = false
-                if player.billboard.addr ~= prev_billboard_addr then
-                    print("Player billboard address changed from " .. string.format("0x%x", prev_billboard_addr) .. " to " .. string.format("0x%x", player.billboard.addr))
-                    local bbl_addr_read = memory.readdword(player.billboard.addr + 0x28)
-                    if bbl_addr_read ~= BillboardList.addr then
-                        memory.registerread(BillboardList.addr, 1, nil) -- unregister the old function, since the old address is no longer relevant.
-                        print("Player billboard's billboard list address changed from " .. string.format("0x%x", BillboardList.addr) .. " to " .. string.format("0x%x", bbl_addr_read))
-                        BillboardList.addr = bbl_addr_read
-                        memory.registerread(BillboardList.addr, 1, function()
-                            ActorManager.hide_billboard_list()
-                        end)
-                    end
-                    deferred_function = billboard_setup
-                else
-                    deferred_function = ActorManager.show_billboard_list
-                end
-                timer = 20
-            end
-            return
-        end
-    end
+    update_name()
 
     -- Update party.
     if frame_counter == 0 then
@@ -356,15 +373,15 @@ local function update()
         return
     end
     -- Keep track of timer nonsense. We don't go past this block if the timer is nonzero.
-    if timer == 0 then
-        if deferred_function then
-            deferred_function()
-            if timer <= 0 then -- Some functions will say "go again" and set the timer to a positive value. In that case, we want to keep the function on the stack. But if it says we're done, we want to pop it.
-                deferred_function = nil
+    if timer >= 0 then
+        if timer == 0 then
+            if deferred_function then
+                deferred_function()
+                if timer <= 0 then -- Some functions will say "go again" and set the timer to a positive value. In that case, we want to keep the function on the stack. But if it says we're done, we want to pop it.
+                    deferred_function = nil
+                end
             end
         end
-    end
-    if timer >= 0 then
         timer = timer - 1
         return
     end
@@ -383,7 +400,6 @@ local function update()
             deferred_function = function()
                 party_order = default_party_order
                 inject_gfx_data()
-                billboard_setup()
             end
             timer = 20
             return
@@ -407,35 +423,19 @@ local function update()
     secretary.update_player(temp)
 end
 
-emu.registerbefore(update)
+emu.registerafter(update)
 
 emu.registerexit(function()
     ActorManager.cull()
-    if ActorManager.player.billboard.next == ActorManager.BillboardList.head then
-        ActorManager.hide_billboard_list()
-    end
+    BillboardList.hide()
 end)
 
 
 
 local function debug_gfx()
-    -- Display the billboard linked list from player (-1) to head (0) to neighbors (1-100) to tail (101) to whatever originally came after the player (102).
-    local i = 0
-    local current = player.billboard
-    pcall(function() gui.text(5, 5, string.format("%d", -1)) end)
-    while current.next do
-        current = current.next
-        i = i + 1
-        local index = math.floor((current.addr - Billboard.scratch_base)/Billboard.SIZE)
-        if index < 0 or index >= 102 then
-            index = 102
-        end
-        pcall(function() gui.text(5+i*20, 5, string.format("%d", index)) end)
-    end
-
     -- Ditto, but ignoring the player and the post-player billboards, for when the billboard list is hidden from the game.
-    current = BillboardList.head
-    i = 0
+    local current = BillboardList.head
+    local i = 0
     pcall(function() gui.text(5, 20, string.format("%d", 0)) end)
     while current.next and current.next.addr >= 0x23c0000 do
         current = current.next
@@ -601,7 +601,7 @@ end
 
 local function display() -- Us drawing on the screen.
     -- Display names of neighbors above their heads.
-    if not in_battle and ActorManager.player.billboard.addr ~= 0 and not player_billboard_changed then
+    if not in_battle and memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET) ~= 0 and not player_billboard_changed then
         for i, neighbor in pairs(ActorManager.neighbors) do
             local nametag = Text:new(Data.encode_string(neighbor.name))
             local name_coords = neighbor.billboard.pos + Pos:from_tiles({0, 2, -1})
@@ -610,10 +610,29 @@ local function display() -- Us drawing on the screen.
         end
     end
 
+    -- memory.writebyte(0x04000244, 0x80) -- VRAMCNT E
+
     if(joypad.get(1)["R"]) then
         debug_memory()
     elseif joypad.get(1)["L"] then
         debug_gfx()
+    elseif joypad.get(1)["B"] and joypad.get(1)["A"] then
+        local curr = BillboardList.sentinel.addr
+        while true do
+            local next = memory.readdword(curr + Billboard.NEXT_OFFSET)
+            local next_prev = memory.readdword(next + Billboard.PREV_OFFSET)
+            print(string.format("curr: 0x%x, next: 0x%x, next prev: 0x%x", curr, next, next_prev))
+            if next == BillboardList.sentinel.addr then
+                print("traced back to start")
+                break
+            else
+                if next_prev ~= curr or next < 0x02200000 or next >= 0x02400000 then -- Together these two checks should prevent this from running forever. 
+                print("error in trace loop at address " .. string.format("0x%x", curr) .. ", next: " .. string.format("0x%x", next) .. ", next prev: " .. string.format("0x%x", next_prev))
+                    break
+                end
+                curr = next
+            end
+        end
     end
 
     if(joypad.get(1)["A"]) and not Obstructions.menus.start_menu.is_showing and not Obstructions.menus.text_box.is_showing then

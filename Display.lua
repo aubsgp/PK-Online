@@ -102,7 +102,7 @@ function Text:new(text, x, y)
 end
 
 -- Sets corner coordinates such that the center of the string is at (x,y).
-function Text:set_center(x, y) 
+function Text:set_center(x, y)
     local string_width = string.len(self.text) * Text.LETTER_WIDTH
     local ul_corner_x = x - string_width / 2
     local ul_corner_y = y - Text.LETTER_HEIGHT / 2

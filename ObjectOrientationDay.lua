@@ -104,11 +104,12 @@ local Billboard = {
 }
 Billboard.__index = Billboard
 
-function Billboard:new(addr, pos, sprite, anim, frame, visible, next_billboard, prev_billboard)
+function Billboard:new(addr, pos, sprite, anim, frame, visible, next_billboard, prev_billboard, palette)
     local instance = setmetatable({}, self)
     instance.addr = addr or 0
     instance.pos = pos or Pos:new()
     instance.sprite = sprite or 0
+    instance.palette = palette or 1
     instance.anim_type = anim or 0
     instance.anim_frame = frame or 0
     instance.visible = visible or 0
@@ -142,6 +143,7 @@ end
 function Billboard:update_from_memory()
     local update = Billboard.from_memory(self.addr)
     self.pos = update.pos
+    self.sprite = update.sprite
     self.anim_type = update.anim_type
     self.anim_frame = update.anim_frame
 end
@@ -216,14 +218,6 @@ function Billboard:set_prev(prev_billboard)
     memory.writedword(self.addr + Billboard.PREV_OFFSET, prev_billboard.addr)
 end
 
-function Billboard:delete()
-    self.next:set_prev(self.prev)
-    self.prev:set_next(self.next)
-
-    self.next = nil
-    self.prev = nil
-end
-
 function Billboard:insert_after(target) -- Inserts the this billboard after the given billboard in the linked list.
     if self.prev then
         return
@@ -291,8 +285,8 @@ function Billboard:write()
         memory.writedword(self.addr + Billboard.PREV_OFFSET, self.prev.addr)
     end
 
-    if self.sprite then
-        local texkey, plttkey = VRAM.get_sprite_keys(self.sprite)
+    if self.sprite and self.palette then
+        local texkey, plttkey = VRAM.get_sprite_keys(self.sprite, self.palette)
         memory.writedword(self.addr + Billboard.TEXKEY_OFFSET, texkey)
         memory.writedword(self.addr + Billboard.PLTTKEY_OFFSET, plttkey)
     end
@@ -314,12 +308,27 @@ end
 
 local BillboardList = {
     addr = 0,
-    billboards = {}, -- Excludes the head and tail.
-    head = {}, -- First billboard, doesn't track an actual player but exists as a reference point to attach the list into the game's list. 
-    tail = {}, -- Last billboard, see above.
+    billboards = {},
+    nilboard = Billboard:new(0), -- This is a dummy billboard that serves as a placeholder for "no billboard".
+    sentinel = {}, -- Game's first/last billboard in its own list.
+    head = {}, -- First billboard of our artificial list, doesn't track an actual player but exists as a reference point to attach the list into the game's list. 
+    tail = {}, -- Last billboard of our artificial list, see above.
     scratch_base = 0x023c0000, -- This is a safe place to write temporary data that won't mess with the game. It's far away from any critical data structures, and the game doesn't seem to use it for anything.
     CAPACITY_OFFSET = 0x08
 }
+BillboardList.billboards[0] = Billboard.nilboard
+
+function BillboardList.delete(billboard)
+    if billboard.next and billboard.next ~= BillboardList.nilboard and billboard.prev and billboard.prev ~= BillboardList.nilboard then
+        billboard.next:set_prev(billboard.prev)
+        billboard.prev:set_next(billboard.next)
+    end
+
+    billboard:set_prev(BillboardList.nilboard)
+    billboard:set_next(BillboardList.nilboard)
+
+    BillboardList.billboards[billboard.addr] = nil
+end
 
 function BillboardList.update_template(template)
     for i = 0, 101 do -- TODO: Avoid writing to texkey and plttkey fields.
@@ -328,28 +337,76 @@ function BillboardList.update_template(template)
     end
 end
 
-function BillboardList.clear_list()
-    local current = BillboardList.head.next
-    while current ~= BillboardList.tail do
-        local temp = current.next
-        current:delete()
-        current = temp
-    end
-end
-
-function BillboardList.get_index(billboard) -- Returns neighbor index from their billboard.
-    local offset = billboard.addr - BillboardList.scratch_base
-    return math.floor(offset / Billboard.SIZE)
-end
-
 function BillboardList.insert_A_before_B(A, B)
     A:insert_before(B)
-    BillboardList.billboards[BillboardList.get_index(A)] = A
 end
 
 function BillboardList.insert_A_after_B(A, B)
     A:insert_after(B)
-    BillboardList.billboards[BillboardList.get_index(A)] = A
+end
+
+function BillboardList.update_from_memory()
+    if not Billboard.sanity_check(BillboardList.sentinel.addr) then
+        print("Warning: billboard list sentinel failed sanity check. Billboard list may be corrupted.")
+        return
+    end
+    local curr = BillboardList.sentinel
+    repeat
+        local next_addr = memory.readdword(curr.addr + Billboard.NEXT_OFFSET)
+        if next_addr and not BillboardList.billboards[next_addr] then
+            BillboardList.billboards[next_addr] = Billboard.from_memory(next_addr)
+        end
+        curr.next = BillboardList.billboards[next_addr]
+
+        local prev_addr = memory.readdword(curr.addr + Billboard.PREV_OFFSET)
+        if prev_addr and not BillboardList.billboards[prev_addr] then
+            BillboardList.billboards[prev_addr] = Billboard.from_memory(prev_addr)
+        end
+        curr.prev = BillboardList.billboards[prev_addr]
+
+        curr:update_from_memory()
+
+        curr = curr.next
+    until curr == BillboardList.sentinel
+end
+
+function BillboardList.hide()
+    local snip_start_addr = memory.readdword(BillboardList.head.addr + Billboard.PREV_OFFSET)
+    local snip_end_addr = memory.readdword(BillboardList.tail.addr + Billboard.NEXT_OFFSET)
+    
+    if snip_start_addr ~= 0 and snip_end_addr ~= 0 then
+        print("Hiding billboard list...")
+        local snip_start = BillboardList.billboards[snip_start_addr]
+        local snip_end = BillboardList.billboards[snip_end_addr]
+        if snip_start and snip_end then
+            snip_start:set_next(snip_end)
+            snip_end:set_prev(snip_start)
+        end
+
+        BillboardList.head:set_prev(BillboardList.nilboard)
+        BillboardList.tail:set_next(BillboardList.nilboard)
+    end
+end
+
+function BillboardList.show()
+    local snip_start = BillboardList.sentinel.prev
+    local snip_end = BillboardList.sentinel
+
+    if snip_start and snip_start ~= BillboardList.tail and snip_end then
+        print("Showing billboard list.")
+        snip_start:set_next(BillboardList.head)
+        BillboardList.head:set_prev(snip_start)
+
+        BillboardList.tail:set_next(snip_end)
+        snip_end:set_prev(BillboardList.tail)
+    end
+end
+
+function BillboardList.move_to_end()
+    if BillboardList.sentinel.prev ~= BillboardList.tail then
+        BillboardList.hide()
+        BillboardList.show()
+    end
 end
 
 ----------
@@ -599,26 +656,17 @@ function ActorManager.cull(indices) -- If called with no argument, culls the who
     for _, index in pairs(indices) do
         local neighbor = ActorManager.neighbors[index]
         if neighbor then
-            neighbor.billboard:delete()
+            BillboardList.delete(neighbor.billboard)
             ActorManager.neighbors[index] = nil
         end
     end
 end
 
-function ActorManager.next_neighbor(neighbor) -- Returns the neighbor corresponding to the next billboard in the linked list.
-    local next_billboard = neighbor.billboard.next
-    if not next_billboard or next_billboard == ActorManager.BillboardList.tail then
-        return nil
-    end
-    local index = ActorManager.BillboardList.get_index(next_billboard)
-    return ActorManager.neighbors[index]
-end
-
 function ActorManager.update_from_secretary(update)
     local keep = update.keep
-    for _, keep in ipairs(keep) do
-        local id = keep.id
-        local neighbor = Actor.wrap(keep)
+    for _, to_keep in ipairs(keep) do
+        local id = to_keep.id
+        local neighbor = Actor.wrap(to_keep)
         if neighbor and neighbor.map == ActorManager.player.map then 
             if ActorManager.neighbors[id] then
                 neighbor.billboard.next = ActorManager.neighbors[id].billboard.next
@@ -626,11 +674,29 @@ function ActorManager.update_from_secretary(update)
             else
                 ActorManager.BillboardList.insert_A_before_B(neighbor.billboard, ActorManager.BillboardList.tail)
             end
+            BillboardList.billboards[neighbor.billboard.addr] = neighbor.billboard
             ActorManager.neighbors[id] = neighbor
             ActorManager.neighbors[id].billboard.visible = 1
+            local color = 1
+            local name = Data.encode_string(neighbor.name)
+            if name == "Kya" then
+                color = 4 -- Pink
+            elseif name == "Flygon" or name == "pChal" then
+                color = 3 -- Blue (close enough to Purple)
+            elseif name == "Nak0lai" then
+                color = 5 -- Green
+            elseif name == "Fuslie" then
+                color = 2 -- Yellow
+            elseif name == "Drayano" then
+                color = 7 -- Pink
+            elseif name == "Squerk" then
+                color = 10 -- Brown
+            elseif name == "Tonks" or name == "Angel" or name == "Buhrito" then
+                color = 9 -- Greyscale, works for both Grey and Black
+            end
+            ActorManager.neighbors[id].billboard.palette = color
             ActorManager.neighbors[id].billboard:write()
         end
-
     end
 
     local kick = update.kick
@@ -639,40 +705,14 @@ function ActorManager.update_from_secretary(update)
     end
 end
 
-function ActorManager.hide_billboard_list()
-    local snip_start = ActorManager.BillboardList.head.prev
-    local snip_end = ActorManager.BillboardList.tail.next
-
-    if snip_start and snip_end then
-        print("Hiding billboard list.")
-        snip_start:set_next(snip_end)
-        snip_end:set_prev(snip_start)
-    end
-
-    ActorManager.BillboardList.head.prev = nil
-    ActorManager.BillboardList.tail.next = nil
-end
-
-function ActorManager.show_billboard_list()
-    local snip_start = ActorManager.player.billboard
-    local snip_end = ActorManager.player.billboard.next
-
-    if snip_end ~= ActorManager.BillboardList.head then
-        print("Inserting billboard list.")
-        ActorManager.BillboardList.head:set_prev(snip_start)
-        snip_start:set_next(ActorManager.BillboardList.head)
-
-        ActorManager.BillboardList.tail:set_next(snip_end)
-        snip_end:set_prev(ActorManager.BillboardList.tail)
-    end
-end
-
 function ActorManager.update_billboard_list()
-    ActorManager.hide_billboard_list()
+    BillboardList.hide()
 
     local player_billboard_addr = memory.readdword(ActorManager.player_addr + Actor.BILLBOARD_OFFSET)
-    ActorManager.player.billboard = Billboard.from_memory(player_billboard_addr)
-    ActorManager.player.billboard:flesh_forward()
+    if ActorManager.player.billboard ~= BillboardList.billboards[player_billboard_addr] then
+        ActorManager.player.billboard = Billboard.from_memory(player_billboard_addr)
+        ActorManager.player.billboard:flesh_forward()
+    end
 
     local billboard_template = Data:new(ActorManager.player.billboard.addr, Billboard.TEXKEY_OFFSET) -- Everything from the texkey onwards is set by us.
     billboard_template:writedwordrange(Billboard.POS_OFFSET, {0, 0, 0})
@@ -687,7 +727,8 @@ function ActorManager.update_billboard_list()
 
     ActorManager.BillboardList.head:write()
     ActorManager.BillboardList.tail:write()
-    ActorManager.show_billboard_list()
+    
+    BillboardList.show()
 end
 
 function ActorManager.player_looking_at()

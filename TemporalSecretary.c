@@ -306,7 +306,7 @@ static int HANDSHAKE(lua_State *L){
         return luaL_error(L, "Failed to open HTTP session handle.");
     }
 
-    connection = WinHttpConnect(session, L"pkonlinebeta.ddns.net", 6868, 0);
+    connection = WinHttpConnect(session, L"192.168.0.6", 6868, 0);
     if(connection == NULL){
         error_log("In HANDSHAKE: Failed to open HTTP connection handle\n");
         WinHttpCloseHandle(session);
